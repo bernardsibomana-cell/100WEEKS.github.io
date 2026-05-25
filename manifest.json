@@ -1,9 +1,9 @@
 {
   "name": "100 Weeks VSLA",
   "short_name": "100Weeks",
-  "start_url": "/100WEEKS.github.io/",
+  "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
+  "background_color": "#1B2A4A",
   "theme_color": "#1B2A4A",
   "icons": [
     {
