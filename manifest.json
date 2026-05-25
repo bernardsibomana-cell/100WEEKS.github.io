@@ -1,1 +1,16 @@
+{
+  "name": "100 Weeks VSLA",
+  "short_name": "100Weeks",
+  "start_url": "/100weeks-dashboard/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1a237e",
+  "icons": [
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
 
