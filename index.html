@@ -2640,6 +2640,51 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js');
 }
 </script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { createUserWithEmailAndPassword } from 
+"https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+const app = initializeApp(firebaseConfig);
+
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+window.login = async function(email,password){
+ try{
+   const user = await signInWithEmailAndPassword(
+      auth,
+      email,
+      password
+   );
+   console.log("Logged in:",user.user.email);
+ }catch(err){
+   alert(err.message);
+ }
+}
+window.register = async function(email,password){
+   try{
+      const user = await createUserWithEmailAndPassword(
+         auth,
+         email,
+         password
+      );
+
+      console.log("Registered:", user.user.email);
+
+   }catch(err){
+      alert(err.message);
+   }
+}
+window.saveReport = async function(data){
+ try{
+   await addDoc(collection(db,"reports"),data);
+   console.log("Saved");
+ }catch(err){
+   console.log(err);
+ }
+}
+</script>
 
 </body>
 </html>
