@@ -2,28 +2,19 @@
 // Caches the app shell so coaches can open and fill the form with no internet.
 // Reports are saved to localStorage and synced when back online (handled in app).
 
-const CACHE_NAME = 'vsla-v2';
+const CACHE_NAME = "100weeks-v1";
 
-// App shell files to cache on install
-const APP_SHELL = [
-  './',
-  './index.html',
+const urlsToCache = [
+  "./",
+  "./index.html",
+  "./manifest.json",
+  "./icon-512.png"
 ];
 
-// CDN resources to cache when first fetched
-const CDN_HOSTS = [
-  'cdnjs.cloudflare.com',
-  'www.gstatic.com',
-];
-
-// ── Install: pre-cache the app shell ──────────────────────────────────────
-self.addEventListener('install', function(event) {
+self.addEventListener("install", event => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then(function(cache) {
-      return cache.addAll(APP_SHELL);
-    }).then(function() {
-      return self.skipWaiting(); // activate immediately
-    })
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(urlsToCache))
   );
 });
 
