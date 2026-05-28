@@ -1129,7 +1129,7 @@ function doSubmit(){
       <div style="flex:1"><div style="font-size:11px;color:var(--gray)">${country}</div><div style="font-size:14px;font-weight:800;color:var(--navy)">${gn}</div></div>
       <span class="code-badge" style="background:${cfg.color}">${code}</span>
     </div>
-    ${[[tl.coach,session.name],[tl.district,report.district||'—'],[tl.month,THIS_MONTH],[tl.week,'Week '+wk],[tl.present2,at+' members'],[countryCur(report.country||'Rwanda').code, countryCur(report.country||'Rwanda').symbol+' '+fmtNum(report.savings)]].map(([k,v])=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:6px 0;border-bottom:1px solid var(--grayl);"><span style="color:var(--gray)">${k}</span><span style="font-weight:700;color:var(--navy)">${v}</span></div>`).join('')}
+    ${[[tl.coach,session.name],[tl.district,report.district||'—'],[tl.monthlyReport,THIS_MONTH],[tl.week,'Week '+wk],[tl.members,report.members||'—'],[tl.present2,at+' '+tl.present2],[countryCur(report.country||'Rwanda').code, countryCur(report.country||'Rwanda').symbol+' '+fmtNum(report.savings)]].map(([k,v])=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:6px 0;border-bottom:1px solid var(--grayl);"><span style="color:var(--gray)">${k}</span><span style="font-weight:700;color:var(--navy)">${v}</span></div>`).join('')}
   `;
   showScreen('success');
 }
