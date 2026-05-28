@@ -337,62 +337,218 @@ body{margin:0!important;padding-top:0!important}
 }
 
 /* ── RESPONSIVE: Desktop & tablet layout ── */
-@media (min-width: 600px) {
-  html, body { overflow: auto; }
 
-  #shell {
-    position: static;
-    min-height: 100vh;
-    height: auto;
+/* ═══════════════════════════════════════════════
+   RESPONSIVE — PC & LAPTOP (600px+)
+   ═══════════════════════════════════════════════ */
+@media (min-width: 600px) {
+
+  /* ── Base layout: unlock from mobile-fixed ── */
+  html, body {
+    overflow: auto !important;
+    height: auto !important;
   }
 
-  .screen { flex: none; min-height: 100vh; }
-  .screen.active { display: flex; flex-direction: column; min-height: 100vh; }
+  #shell {
+    position: relative;
+    min-height: 100vh;
+    height: auto;
+    overflow: visible;
+  }
 
-  /* Login screen: centre the card */
+  .screen {
+    flex: none;
+    min-height: 100vh;
+    overflow: visible;
+  }
+  .screen.active {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    overflow: visible;
+  }
+
+  /* ── Topbar ── */
+  .topbar {
+    padding: 14px 32px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .topbar img { height: 28px; }
+
+  /* ── Scrollable areas become normal flow ── */
+  .scroll {
+    overflow: visible !important;
+    flex: none;
+  }
+
+  /* ── LOGIN SCREEN ── */
   #scr-login .scroll {
+    display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 40px 20px 48px !important;
     min-height: calc(100vh - 56px);
+    padding: 48px 24px !important;
+    background: linear-gradient(175deg, var(--navyd), var(--navym));
   }
 
   #scr-login .scroll > div:first-child {
-    /* logo / brand block */
     width: 100%;
-    max-width: 420px;
+    max-width: 460px;
+    text-align: center;
   }
 
   #scr-login .scroll > div:last-child {
-    /* white card */
     width: 100%;
-    max-width: 420px;
-    box-shadow: 0 8px 40px rgba(27,42,74,.22);
+    max-width: 460px;
+    box-shadow: 0 12px 48px rgba(0,0,0,0.28);
+    border-radius: 24px;
+    padding: 36px 32px;
   }
 
-  /* Admin & other content: cap width */
+  /* ── REGISTER SCREEN ── */
+  #scr-register .scroll {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 32px 24px 48px !important;
+  }
+  #scr-register .scroll > * {
+    width: 100%;
+    max-width: 520px;
+  }
+
+  /* ── COACH FORM SCREEN ── */
+  #scr-coach .scroll {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px !important;
+  }
+  #scr-coach .scroll > * {
+    width: 100%;
+    max-width: 620px;
+  }
+
+  /* ── ADMIN SCREEN ── */
+  #scr-admin .scroll,
   #admin-content,
   #cadmin-content {
-    max-width: 900px;
+    max-width: 960px;
+    margin: 0 auto;
+    width: 100%;
+    padding: 20px 24px 48px !important;
+  }
+
+  .admin-tabs {
+    max-width: 960px;
     margin: 0 auto;
     width: 100%;
   }
 
-  .country-hdr { max-width: 900px; margin: 0 auto; width: 100%; }
+  .country-hdr {
+    max-width: 960px;
+    margin: 0 auto;
+    width: 100%;
+    padding: 16px 24px !important;
+  }
 
-  /* Cards in admin grid */
-  .card { max-width: 860px; }
+  /* ── Cards: side-by-side on wide screens ── */
+  .card {
+    border-radius: 16px;
+    padding: 18px 20px;
+    margin-bottom: 12px;
+  }
 
-  /* Input & button sizing on desktop */
-  .inp { font-size: 15px; padding: 14px 18px; }
-  .btn { font-size: 15px; padding: 16px; }
+  /* ── Inputs & Buttons ── */
+  .inp {
+    font-size: 15px;
+    padding: 14px 18px;
+    border-radius: 12px;
+  }
+
+  .btn {
+    font-size: 15px;
+    padding: 16px;
+    border-radius: 14px;
+    cursor: pointer;
+  }
+  .btn:hover { opacity: 0.9; }
+
+  /* ── Typography ── */
+  .sh { font-size: 12px; margin-top: 24px; }
+  .fl { font-size: 11px; }
+
+  /* ── Submit bar ── */
+  .submit-bar {
+    padding: 14px 24px 32px;
+    max-width: 620px;
+    margin: 0 auto;
+    width: 100%;
+    background: transparent;
+    box-shadow: none;
+    border-top: none;
+  }
+
+  /* ── Modals ── */
+  #del-overlay { padding: 40px; }
+  #del-box { max-width: 400px; border-radius: 24px; padding: 32px; }
+
+  #stat-modal-sheet {
+    border-radius: 22px;
+    max-width: 600px;
+    margin: auto;
+    max-height: 80vh;
+  }
+  #stat-modal-overlay {
+    align-items: center;
+    padding: 40px;
+  }
+
+  /* ── Charts modal ── */
+  #chart-modal-body { padding: 32px; }
 }
 
+/* ═══════════════════════════════════════════════
+   LARGE SCREENS — DESKTOP / WIDE LAPTOP (900px+)
+   ═══════════════════════════════════════════════ */
 @media (min-width: 900px) {
+
+  .topbar { padding: 16px 48px; }
+
   #scr-login .scroll > div:first-child,
   #scr-login .scroll > div:last-child {
-    max-width: 480px;
+    max-width: 500px;
   }
+
+  #scr-register .scroll > * { max-width: 580px; }
+  #scr-coach .scroll > * { max-width: 700px; }
+
+  #admin-content,
+  #cadmin-content {
+    max-width: 1100px;
+    padding: 24px 48px 60px !important;
+  }
+
+  .admin-tabs { max-width: 1100px; }
+  .country-hdr { max-width: 1100px; padding: 18px 48px !important; }
+
+  .atab { padding: 13px 22px; font-size: 12px; }
+
+  /* Two-column card grid on admin screens */
+  #admin-content .card,
+  #cadmin-content .card {
+    display: inline-flex;
+    width: calc(50% - 8px);
+    vertical-align: top;
+    margin-right: 8px;
+  }
+
+  .btn { max-width: 480px; }
+
+  .submit-bar { max-width: 700px; }
 }
 </style></head>
 <body>
