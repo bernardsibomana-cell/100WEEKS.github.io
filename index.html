@@ -565,15 +565,15 @@ body{margin:0!important;padding-top:0!important}
         <option value="">— Hitamo Akarere —</option>
       </select>
 
-      <label class="fl" id="c-seclbl">UMURENGE</label>
-      <input class="inp" id="form-sector" placeholder="urugero: Nyarugenge" style="margin-bottom:14px;"/>
+      <label class="fl" id="c-seclbl">UMUNTU UKURIKIRANA ITSINDA KU NTANGIRO Z'ICYICIRO (Amazina ye)</label>
+      <input class="inp" id="form-sector" placeholder="urugero: Marie Uwimana" style="margin-bottom:14px;"/>
 
       <label class="fl" id="c-memlbl">UMUBARE W'ABANYAMURYANGO B'ITSINDA</label>
       <input class="inp" type="number" id="form-members" placeholder="urugero: 25" style="margin-bottom:14px;"/>
 
       <!-- Section 2 -->
-      <div class="sh" id="c-sh2">📊 UMUBARE W'ABITABIRIYE INAMA</div>
-      <label class="fl" id="c-wklbl">UMUBARE W'ICYUMWERU <span class="req">*</span></label>
+      <div class="sh" id="c-sh2">📊 AMAKURU RUSANGE</div>
+      <label class="fl" id="c-wklbl">IGIHE AMAKURU AKUSANYIRIJWE (italiki) <span class="req">*</span></label>
       <select class="inp" id="form-week" style="margin-bottom:4px;" onchange="fErr('week','')">
       <option value="">— Hitamo Icyumweru —</option>
       <option value="1">Icyumweru 1 (Week 1)</option>
@@ -1447,15 +1447,50 @@ setInterval(updateConnStatus, 5000);
 setTimeout(() => { if (navigator.onLine) window.drainSyncQueue(); }, 3000);
 
 function resetForm(){
-  ['form-country','form-code','form-groupname','form-district','form-sector','form-members','form-week','form-attendance','form-dropouts','form-savings','form-loans','form-repayments','form-loanTakers','form-box','form-bank','form-social','form-property','form-notes'].forEach(id=>{const el=$(id);if(el){if(el.tagName==='SELECT')el.selectedIndex=0;else el.value='';}});
-  $('c-code-badge').style.display='none';
-  const sp=$('submit-preview'); if(sp) sp.style.display='none';
-  ['code','groupname','week','attendance','savings'].forEach(f=>fErr(f,''));
-  onCountryChange();
-  showScreen('coach');
-  var sc=document.querySelector('#scr-coach .scroll');
-  if(sc) sc.scrollTop=0;
+  try {
+    ['form-country','form-code','form-groupname','form-district','form-sector','form-members','form-week','form-attendance','form-dropouts','form-savings','form-loans','form-repayments','form-loanTakers','form-box','form-bank','form-social','form-property','form-notes'].forEach(id=>{
+      const el=$(id);
+      if(el){
+        if(el.tagName==='SELECT'){
+          el.selectedIndex=0;
+        } else {
+          el.value='';
+        }
+      }
+    });
+
+    const badge=$('c-code-badge');
+    if(badge) badge.style.display='none';
+
+    const sp=$('submit-preview');
+    if(sp) sp.style.display='none';
+
+    ['code','groupname','week','attendance','savings'].forEach(f=>{
+      if(typeof fErr==='function') fErr(f,'');
+    });
+
+    if(typeof onCountryChange==='function') onCountryChange();
+    if(typeof showScreen==='function') showScreen('coach');
+
+    const sc=document.querySelector('#scr-coach .scroll');
+    if(sc) sc.scrollTop=0;
+  } catch(err) {
+    console.error('Reset form error:', err);
+    document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+    const coachScreen=document.getElementById('scr-coach');
+    if(coachScreen) coachScreen.classList.add('active');
+  }
 }
+
+window.addEventListener('DOMContentLoaded', function(){
+  const btn=document.getElementById('s-another');
+  if(btn){
+    btn.addEventListener('click', function(e){
+      e.preventDefault();
+      resetForm();
+    });
+  }
+});
 
 function adminTab(tab){
   currentAdminTab=tab;
