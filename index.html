@@ -127,10 +127,11 @@ select.inp{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.
 #stat-modal-body{padding:14px 18px 28px;overflow-y:auto;flex:1;}
 </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <!-- Firebase SDK -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, getDocs }
+  import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, getDocs, deleteDoc, doc, setDoc }
     from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
   import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
@@ -162,8 +163,32 @@ select.inp{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.
     orderBy,
     serverTimestamp,
     getDocs,
+    deleteDoc,
+    doc,
+    setDoc,
     reportsCol: ()=> collection(db,'vsla_reports'),
     coachesCol: ()=> collection(db,'vsla_coaches'),
+  };
+
+  // True upsert: if coach has a firestoreId, overwrite that doc; else add new
+  window.__fbUpdateCoach = async function(coach) {
+    try {
+      if (coach.firestoreId) {
+        const ref = doc(db, 'vsla_coaches', coach.firestoreId);
+        await setDoc(ref, {...coach, timestamp: serverTimestamp(), _source: 'mobile'});
+        return {ok:true, id:coach.firestoreId};
+      } else {
+        const docRef = await addDoc(collection(db,'vsla_coaches'), {
+          ...coach,
+          timestamp: serverTimestamp(),
+          _source: 'mobile'
+        });
+        return {ok:true, id:docRef.id};
+      }
+    } catch(e) {
+      console.error('Firebase update coach error:', e);
+      return {ok:false, error:e.message};
+    }
   };
 
   onSnapshot(query(collection(db,'vsla_reports'), orderBy('timestamp','desc')), snap => {
@@ -213,8 +238,21 @@ select.inp{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.
 
   window.__fbPushAdmin = async function(admin) {
     try {
-      await addDoc(collection(db,'vsla_admins'), {...admin, timestamp:serverTimestamp()});
-      return {ok:true};
+      const docRef = await addDoc(collection(db,'vsla_admins'), {...admin, timestamp:serverTimestamp()});
+      return {ok:true, id:docRef.id};
+    } catch(e) { return {ok:false, error:e.message}; }
+  };
+
+  window.__fbUpdateAdmin = async function(admin) {
+    try {
+      if (admin.firestoreId) {
+        const ref = doc(db, 'vsla_admins', admin.firestoreId);
+        await setDoc(ref, {...admin, timestamp: serverTimestamp()});
+        return {ok:true, id:admin.firestoreId};
+      } else {
+        const docRef = await addDoc(collection(db,'vsla_admins'), {...admin, timestamp:serverTimestamp()});
+        return {ok:true, id:docRef.id};
+      }
     } catch(e) { return {ok:false, error:e.message}; }
   };
 
@@ -459,19 +497,44 @@ body{margin:0!important;padding-top:0!important}
         <button style="background:rgba(255,255,255,.12);border:none;color:rgba(255,255,255,.7);border-radius:8px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer;" onclick="doLogout()" id="c-signout">Sign Out</button>
       </div>
     </div>
-    <div id="coach-country-hdr" class="country-hdr" style="background:#fff;border-bottom:1px solid var(--grayl);">
-      <div style="font-size:9.5px;color:var(--gray);font-weight:700;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:3px;" id="c-hdrlbl">Monthly Report</div>
-      <div style="display:flex;align-items:center;gap:10px;">
-        <span style="font-size:24px;" id="c-flag">🇷🇼</span>
+    <div id="coach-country-hdr" class="country-hdr" style="background:var(--green);border-bottom:none;padding:10px 14px 10px;">
+      <!-- Row 1: country info -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+        <span style="font-size:22px;" id="c-flag">🇷🇼</span>
         <div style="flex:1;">
-          <div style="font-size:16px;font-weight:800;color:var(--navy);" id="c-country-name">Rwanda VSLA</div>
-          <div style="font-size:11px;color:var(--gray);margin-top:1px;" id="c-coach-sub"></div>
+          <div style="font-size:9px;color:rgba(255,255,255,.55);font-weight:700;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:1px;" id="c-hdrlbl">Monthly Report</div>
+          <div style="font-size:15px;font-weight:800;color:#fff;" id="c-country-name">Rwanda VSLA</div>
+          <div style="font-size:10px;color:rgba(255,255,255,.65);margin-top:1px;" id="c-coach-sub"></div>
         </div>
-        <span id="c-code-badge" style="display:none;background:var(--navy);color:#fff;font-size:12px;font-weight:900;padding:3px 11px;border-radius:7px;letter-spacing:1px;"></span>
+        <span id="c-code-badge" style="display:none;background:rgba(255,255,255,.22);color:#fff;font-size:11px;font-weight:900;padding:3px 10px;border-radius:7px;letter-spacing:1px;"></span>
+      </div>
+      <!-- Row 2: status + action buttons -->
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+        <span id="conn-dot" style="width:8px;height:8px;border-radius:50%;background:#A8F0D8;display:inline-block;flex-shrink:0;"></span>
+        <span id="conn-lbl" style="color:rgba(255,255,255,.85);font-weight:600;font-size:10px;flex:1;">Online — ready to submit</span>
+        <span id="draft-ts" style="color:rgba(255,255,255,.55);font-size:9px;"></span>
+      </div>
+      <div style="display:flex;gap:6px;">
+        <button onclick="saveDraft()" title="Save Draft" style="flex:1;padding:8px 4px;background:rgba(255,255,255,.18);color:#fff;border:1.5px solid rgba(255,255,255,.35);border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          Save
+        </button>
+        <button onclick="editDraft()" title="Load saved draft" id="edit-draft-btn" style="flex:1;padding:8px 4px;background:rgba(255,255,255,.10);color:rgba(255,255,255,.65);border:1.5px solid rgba(255,255,255,.2);border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;opacity:0.6;" disabled>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          Load
+        </button>
+        <button onclick="syncReport()" id="sync-btn" title="Sync when online" style="flex:1;padding:8px 4px;background:rgba(255,255,255,.18);color:#fff;border:1.5px solid rgba(255,255,255,.35);border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;position:relative;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+          Sync
+          <span id="sync-badge" style="display:none;position:absolute;top:-5px;right:-4px;background:#C0392B;color:#fff;font-size:9px;font-weight:900;min-width:16px;height:16px;border-radius:10px;padding:0 3px;align-items:center;justify-content:center;line-height:16px;"></span>
+        </button>
+        <button class="btn btn-navy" onclick="doSubmit()" id="c-submitbtn" style="flex:2;padding:8px 6px;font-size:12px;border-radius:10px;background:#fff;color:var(--green);">
+          ✓ Submit
+        </button>
       </div>
     </div>
 
-    <div class="scroll" style="padding:14px 16px 130px;background:transparent;">
+    <div class="scroll" style="padding:14px 16px 30px;background:transparent;">
       <!-- Section 1 -->
       <div class="sh" id="c-sh1">🌍 COUNTRY &amp; GROUP</div>
 
@@ -545,42 +608,9 @@ body{margin:0!important;padding-top:0!important}
 
       <!-- Section 4 -->
       <div class="sh" id="c-sh4">📝 NOTES (OPTIONAL)</div>
-      <textarea class="inp" id="form-notes" placeholder="Observations, challenges, highlights…" rows="3" style="resize:none;"></textarea>
+      <textarea class="inp" id="form-notes" placeholder="Observations, challenges, highlights…" rows="3" style="resize:none;margin-bottom:20px;"></textarea>
     </div>
 
-    <!-- Submit bar -->
-    <div class="submit-bar" style="padding:10px 14px 24px;">
-      <div id="submit-preview" style="display:none;text-align:center;margin-bottom:8px;font-size:11px;color:var(--gray);"></div>
-      
-      <!-- Online/Offline status indicator -->
-      <div id="conn-bar" style="display:flex;align-items:center;gap:6px;margin-bottom:8px;padding:6px 10px;background:var(--off);border-radius:9px;font-size:11px;">
-        <span id="conn-dot" style="width:8px;height:8px;border-radius:50%;background:#1A7A5E;display:inline-block;flex-shrink:0;"></span>
-        <span id="conn-lbl" style="color:var(--navy);font-weight:600;">Online — ready to submit</span>
-        <span id="draft-ts" style="margin-left:auto;color:var(--gray);font-size:10px;"></span>
-      </div>
-      
-      <!-- Action row: Save Draft | Edit | Sync Later -->
-      <div style="display:flex;gap:6px;margin-bottom:8px;">
-        <button onclick="saveDraft()" title="Save Draft" style="flex:1;padding:9px 4px;background:#E8F5E9;color:#1B5E20;border:none;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-          Save
-        </button>
-        <button onclick="editDraft()" title="Edit saved draft" id="edit-draft-btn" style="flex:1;padding:9px 4px;background:#E8F0FE;color:var(--blue);border:none;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;opacity:0.5;" disabled>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-          Load
-        </button>
-        <button onclick="syncReport()" id="sync-btn" title="Sync when online" style="flex:1;padding:9px 4px;background:#FEF3DC;color:#C47F0A;border:none;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;position:relative;">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
-          Sync
-          <span id="sync-badge" style="display:none;position:absolute;top:-5px;right:-4px;background:#C0392B;color:#fff;font-size:9px;font-weight:900;min-width:16px;height:16px;border-radius:10px;padding:0 3px;align-items:center;justify-content:center;line-height:16px;"></span>
-        </button>
-      </div>
-      
-      <!-- Submit -->
-      <button class="btn btn-navy" onclick="doSubmit()" id="c-submitbtn" style="font-size:14px;">
-        ✓ Submit Monthly Report
-      </button>
-    </div>
   </div>
 
   <!-- == SUCCESS SCREEN ==================================================== -->
@@ -637,9 +667,11 @@ body{margin:0!important;padding-top:0!important}
       <button class="atab" id="cat-analytics" onclick="cadminTab('analytics')">📊 Analytics</button>
     </div>
     <div class="scroll" id="cadmin-content" style="padding:14px;padding-bottom:80px;background:transparent;"></div>
-    <div style="position:absolute;bottom:0;left:0;right:0;padding:10px 12px 18px;background:white;border-top:1px solid var(--grayl);display:flex;gap:8px;">
-      <button onclick="dlCountryAdmin('csv')" style="flex:1;padding:9px;background:#E8F5E9;color:#1B5E20;border:none;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">CSV</button>
-      <button onclick="dlCountryAdmin('pdf')" style="flex:1;padding:9px;background:#E3F2FD;color:#0D47A1;border:none;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">PDF</button>
+    <div style="position:absolute;bottom:0;left:0;right:0;padding:8px 10px 16px;background:white;border-top:1px solid var(--grayl);display:flex;flex-wrap:wrap;gap:6px;">
+      <button onclick="dlCountryAdmin('xlsx')" style="flex:1;min-width:80px;padding:8px 4px;background:#E8F5E9;color:#1B5E20;border:none;border-radius:10px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;">📊 By Group</button>
+      <button onclick="dlCountryAllSubmissions()" style="flex:1;min-width:80px;padding:8px 4px;background:#E3F2FD;color:#0D47A1;border:none;border-radius:10px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;">📥 All Rows</button>
+      <button onclick="dlCAdminAnalyticsExcel()" style="flex:1;min-width:80px;padding:8px 4px;background:#FFF8E1;color:#C47F0A;border:none;border-radius:10px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;">📈 Analytics</button>
+      <button onclick="dlCountryAdmin('pdf')" style="flex:1;min-width:80px;padding:8px 4px;background:#FCE4EC;color:#880E4F;border:none;border-radius:10px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;">📄 PDF</button>
     </div>
   </div>
 
@@ -818,12 +850,41 @@ function doLogin(){
   $('l-btn').textContent='Signing in…';
   $('l-btn').disabled=true;
 
-  // Super admin
-  if(name==='admin'&&pass==='100W@Admin2025'){
-    session={name:'Admin',role:'admin',country:'All'};
-    $('l-btn').textContent='Sign In →';
-    $('l-btn').disabled=false;
-    showScreen('admin'); adminTab('home');
+  // Super admin — password stored as SHA-256 hash in localStorage
+  // Default hash is for '100W@Admin2025'. Admin can change it via Settings tab.
+  var ADMIN_HASH_KEY = 'vsla_admin_pw_hash';
+  var DEFAULT_ADMIN_HASH = 'e3f6b8a2d1c94705f8e2a3b67c0d15e94f2a1b8c3d56e709f1a2b3c4d5e6f708'; // placeholder, set below
+  async function hashPw(pw) {
+    var buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pw));
+    return Array.from(new Uint8Array(buf)).map(function(b){ return b.toString(16).padStart(2,'0'); }).join('');
+  }
+  async function verifyAdminPw(pw) {
+    var stored = localStorage.getItem(ADMIN_HASH_KEY);
+    if (!stored) {
+      // First run: store hash of default password
+      stored = await hashPw('100W@Admin2025');
+      localStorage.setItem(ADMIN_HASH_KEY, stored);
+    }
+    return (await hashPw(pw)) === stored;
+  }
+  window.__changeAdminPassword = async function(oldPw, newPw) {
+    if (!(await verifyAdminPw(oldPw))) return {ok:false, msg:'Current password incorrect'};
+    if (!newPw || newPw.length < 8) return {ok:false, msg:'New password must be at least 8 characters'};
+    localStorage.setItem(ADMIN_HASH_KEY, await hashPw(newPw));
+    return {ok:true};
+  };
+
+  if(name==='admin'){
+    verifyAdminPw(pass).then(function(ok){
+      $('l-btn').textContent='Sign In →';
+      $('l-btn').disabled=false;
+      if(ok){
+        session={name:'Admin',role:'admin',country:'All'};
+        showScreen('admin'); adminTab('home');
+      } else {
+        loginErr(t().incorrectCreds);
+      }
+    });
     return;
   }
 
@@ -1019,6 +1080,13 @@ function doSubmit(){
     date:new Date().toISOString().split('T')[0],
   };
   const reps=lr();
+  // Duplicate guard — same coach, group and month already submitted
+  var alreadyExists = reps.some(function(r){
+    return r.coachName===session.name && r.groupCode===code && r.month===THIS_MONTH;
+  });
+  if(alreadyExists){
+    if(!confirm('A report for ' + code + ' in ' + THIS_MONTH + ' already exists. Submit again anyway?')) return;
+  }
   const localReport = {...report, submittedAt: new Date().toISOString(), _synced: false};
   sr([...reps, localReport]);
 
@@ -1131,7 +1199,13 @@ function updateDraftUI(savedAt){
   const ts = document.getElementById('draft-ts');
   const editBtn = document.getElementById('edit-draft-btn');
   if(ts) ts.textContent = savedAt ? '💾 '+savedAt : '';
-  if(editBtn){ editBtn.disabled=false; editBtn.style.opacity='1'; }
+  if(editBtn){
+    editBtn.disabled=false;
+    editBtn.style.opacity='1';
+    editBtn.style.background='rgba(255,255,255,.18)';
+    editBtn.style.color='#fff';
+    editBtn.style.borderColor='rgba(255,255,255,.35)';
+  }
 }
 
 function syncReport(){
@@ -1173,13 +1247,13 @@ function updateConnStatus(){
   const lbl=document.getElementById('conn-lbl');
   const syncBtn=document.getElementById('sync-btn');
   if(navigator.onLine){
-    if(dot){dot.style.background='#1A7A5E';}
+    if(dot){dot.style.background='#A8F0D8';}
     if(lbl){lbl.textContent='Online — ready to submit';}
-    if(syncBtn){syncBtn.style.background='#FEF3DC';syncBtn.style.color='#C47F0A';}
+    if(syncBtn){syncBtn.style.background='rgba(255,255,255,.18)';syncBtn.style.color='#fff';syncBtn.style.borderColor='rgba(255,255,255,.35)';}
   } else {
-    if(dot){dot.style.background='#C0392B';}
+    if(dot){dot.style.background='#FFB3AE';}
     if(lbl){lbl.textContent='Offline — changes saved locally';}
-    if(syncBtn){syncBtn.style.background='#FDECEA';syncBtn.style.color='#C0392B';}
+    if(syncBtn){syncBtn.style.background='rgba(192,57,43,.35)';syncBtn.style.color='#fff';syncBtn.style.borderColor='rgba(255,255,255,.2)';}
   }
 }
 // ══ OFFLINE SYNC ENGINE ══════════════════════════════════════════════════
@@ -1233,12 +1307,14 @@ function updateSyncBadge() {
   const badge = document.getElementById('sync-badge');
   if (!btn) return;
   if (queue.length > 0) {
-    btn.style.background = '#FFF3E0';
-    btn.style.color = '#E65100';
+    btn.style.background = 'rgba(192,57,43,.4)';
+    btn.style.color = '#fff';
+    btn.style.borderColor = 'rgba(255,180,170,.5)';
     if (badge) { badge.textContent = queue.length; badge.style.display = 'inline-flex'; }
   } else {
-    btn.style.background = '#FEF3DC';
-    btn.style.color = '#C47F0A';
+    btn.style.background = 'rgba(255,255,255,.18)';
+    btn.style.color = '#fff';
+    btn.style.borderColor = 'rgba(255,255,255,.35)';
     if (badge) badge.style.display = 'none';
   }
 }
@@ -1315,6 +1391,7 @@ function renderAdminTab(tab){
     html += '<div style="font-size:12px;font-weight:800;color:#fff;">Hello, '+session.name+' &#128075;</div>';
     html += '<div style="font-size:9px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.5px;">VSLA Admin &middot; Full Access</div>';
     html += '</div>';
+    html += '<button onclick="openAdminPwChangeModal()" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.8);border-radius:8px;padding:5px 10px;font-size:10px;font-weight:700;cursor:pointer;">🔐 Change PW</button>';
     html += '<div style="width:8px;height:8px;border-radius:50%;background:#4CAF50;box-shadow:0 0 6px #4CAF50;"></div>';
     html += '</div>';
     html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">';
@@ -1435,9 +1512,22 @@ function renderAdminTab(tab){
   }
 
   else if(tab==='reports'){
-    html=`<div style="font-size:11px;color:var(--gray);margin-bottom:14px;">${reports.length} ${tl.reports}</div>`;
-    if(!reports.length){html+=`<div style="text-align:center;padding:40px 20px;color:var(--gray);"><div style="font-size:36px;margin-bottom:10px">📋</div><div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:4px">${tl.noReports}</div><div style="font-size:11px">${tl.noReportsDesc}</div></div>`;}
-    else{html+=[...reports].reverse().map(r=>{const cfg=COUNTRIES_CFG[r.country]||{flag:'🌍',color:'var(--navy)'};return`<div class="card"><div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;"><span style="font-size:18px">${cfg.flag}</span><div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--navy)">${r.groupName}</div><div style="font-size:10.5px;color:var(--gray)">${r.coachName} · ${r.month}</div></div><span class="code-badge" style="background:${cfg.color}">${r.groupCode}</span></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;"><div style="background:var(--greenp);border-radius:8px;padding:7px 10px;"><div style="font-size:9px;color:var(--green);font-weight:700">${tl.savings.toUpperCase()}</div><div style="font-size:12px;font-weight:800;color:var(--green)">${countryCur(r.country).symbol} ${fmtNum(r.savings)}</div></div><div style="background:var(--bluep);border-radius:8px;padding:7px 10px;"><div style="font-size:9px;color:var(--blue);font-weight:700">${tl.present.toUpperCase()}</div><div style="font-size:12px;font-weight:800;color:var(--blue)">${r.attendance||0} / ${r.members||0}</div></div></div></div>`;}).join('');}
+    html='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px;">';
+    html+='<div style="font-size:11px;color:var(--gray);">'+reports.length+' '+tl.reports+'</div>';
+    html+='<button onclick="dlAllSubmissionsExcel()" style="flex-shrink:0;padding:7px 14px;background:#E8F5E9;color:#1B5E20;border:1.5px solid #1B5E20;border-radius:10px;font-size:10px;font-weight:800;cursor:pointer;font-family:inherit;">&#x1F4E5; All Submissions Excel</button>';
+    html+='</div>';
+    // Filter bar
+    html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">';
+    html+='<select id="admin-rep-country-filter" class="inp" onchange="applyAdminReportFilters()" style="font-size:11px;padding:9px 12px;">';
+    html+='<option value="">All Countries</option>';
+    Object.keys(COUNTRIES_CFG).forEach(function(cn){ html+='<option value="'+cn+'">'+COUNTRIES_CFG[cn].flag+' '+cn+'</option>'; });
+    html+='</select>';
+    html+='<input id="admin-rep-search" class="inp" placeholder="&#x1F50D; Search coach / group" oninput="applyAdminReportFilters()" style="font-size:11px;padding:9px 12px;"/>';
+    html+='</div>';
+    html+='<div id="admin-rep-list">';
+    if(!reports.length){html+='<div style="text-align:center;padding:40px 20px;color:var(--gray);"><div style="font-size:36px;margin-bottom:10px">&#x1F4CB;</div><div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:4px">'+tl.noReports+'</div><div style="font-size:11px">'+tl.noReportsDesc+'</div></div>';}
+    else{html+=buildAdminReportCards([...reports].reverse());}
+    html+='</div>';
   }
 
   else if(tab==='coaches'){
@@ -1562,7 +1652,12 @@ function doAddCoach(){
   const nc={id:'C'+Date.now(),username:name,password:pw||'',name,role:'coach',country,district,registeredAt:new Date().toISOString(),needsPassword:!pw};
   sc([...coaches,nc]);
   if(navigator.onLine && window.__fbPushCoach) {
-    window.__fbPushCoach(nc).catch(console.error);
+    window.__fbPushCoach(nc).then(function(res){
+      if(res && res.ok && res.id) {
+        var coaches2 = lc().map(function(c){ return c.id===nc.id ? Object.assign({},c,{firestoreId:res.id}) : c; });
+        sc(coaches2);
+      }
+    }).catch(console.error);
   }
   showToast('✓ '+name+(pw?' (password set)':' (needs registration)'));
   adminTab('coaches');
@@ -1918,10 +2013,10 @@ function renderCAdminReports(el, country, allReps, allCoaches, thisMonth, day){
         h2+='<div style="font-size:8px;color:var(--gray);">'+f.l+'</div></div>';
       });
       h2+='</div>';
-      var rIdx=allReps.indexOf(r);
+      var rIdx = r.submittedAt || allReps.indexOf(r);
       h2+='<div style="display:flex;gap:6px;margin-top:10px;">';
-      h2+='<button onclick="dlSingleReport(\'csv\','+rIdx+')" style="flex:1;padding:7px;background:#E8F5E9;color:#1B5E20;border:none;border-radius:8px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;">📥 CSV</button>';
-      h2+='<button onclick="dlSingleReport(\'pdf\','+rIdx+')" style="flex:1;padding:7px;background:#FCE4EC;color:#880E4F;border:none;border-radius:8px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;">📄 View/PDF</button>';
+      h2+='<button onclick="dlSingleReport(\'xlsx\',\''+rIdx+'\')" style="flex:1;padding:7px;background:#E8F5E9;color:#1B5E20;border:none;border-radius:8px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;">📊 Excel</button>';
+      h2+='<button onclick="dlSingleReport(\'pdf\',\''+rIdx+'\')" style="flex:1;padding:7px;background:#FCE4EC;color:#880E4F;border:none;border-radius:8px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;">📄 View/PDF</button>';
       h2+='</div>';
       h+=h2+'</div>';
     });
@@ -2093,10 +2188,19 @@ function renderCAdminDashboard(){
     if (!d) return;
     var coach = d.allCoaches.find(function(c){ return (c.id||c.name.replace(/\W/g,'_'))===coachId; });
     if (!coach) return;
+    // Store current coach for drill-downs
+    window._currentCoachId = coachId;
+    window._renderCoachMain(coachId);
+    document.getElementById('stat-modal-overlay').style.display='flex';
+  };
+
+  window._renderCoachMain = function(coachId) {
+    var d = window._cadminStatData;
+    var coach = d.allCoaches.find(function(c){ return (c.id||c.name.replace(/\W/g,'_'))===coachId; });
+    if (!coach) return;
     var reps = d.allReps.filter(function(r){ return r.coachName===coach.name; });
     var totalSav=reps.reduce(function(s,r){return s+Number(r.savings||0);},0);
     var totalLoans=reps.reduce(function(s,r){return s+Number(r.loans||0);},0);
-    var totalRep=reps.reduce(function(s,r){return s+Number(r.repayments||0);},0);
     var cr=reps.filter(function(r){return r.month===d.thisMonth;});
     var sub=cr.length>0;
     var subDate=sub?cr[0].date:'';
@@ -2104,37 +2208,188 @@ function renderCAdminDashboard(){
     if(sub&&subDate){var sd=new Date(subDate);onTime=sd<=new Date(sd.getFullYear(),sd.getMonth(),10);}
     var statusDay=new Date().getDate();
     var status=sub?(onTime?'✅ On Time':'⚠️ Late'):(statusDay>10?'🔴 Overdue':'⏳ Pending');
-    var groups=[...new Set(reps.map(function(r){return r.groupName||r.groupCode;}))];
+    var statusColor=sub?(onTime?'var(--green)':'var(--amber)'):'var(--red)';
+    var statusBg=sub?(onTime?'var(--greenp)':'var(--amberp)'):'var(--redp)';
+    var groups=[...new Set(reps.map(function(r){return r.groupCode;}))];
     var byMonth=reps.slice().reverse().map(function(r){
       return '<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--grayl);font-size:12px;">'+
-        '<span style="color:var(--gray);">'+r.month+'</span>'+
-        '<span style="font-weight:700;color:var(--green);">RWF '+fmtNum(r.savings)+'</span></div>';
+        '<span style="color:var(--gray);">'+r.month+' · Wk '+r.week+'</span>'+
+        '<span style="font-weight:700;color:var(--green);">'+countryCur(d.country).symbol+' '+fmtNum(r.savings)+'</span></div>';
     }).join('');
+
     var html=
       '<div style="background:var(--off);border-radius:12px;padding:12px;margin-bottom:12px;">'+
-        '<div style="font-size:12px;font-weight:700;color:var(--navy);">'+coach.name+'</div>'+
+        '<div style="font-size:13px;font-weight:800;color:var(--navy);">'+coach.name+'</div>'+
         '<div style="font-size:10px;color:var(--gray);margin-top:2px;">'+(coach.district||d.country)+'</div>'+
         '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">'+
-          '<span style="background:var(--greenp);color:var(--green);padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;">RWF '+fmtNum(totalSav)+' saved</span>'+
-          '<span style="background:var(--amberp);color:var(--amber);padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;">RWF '+fmtNum(totalLoans)+' loans</span>'+
+          '<span style="background:var(--greenp);color:var(--green);padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;">'+countryCur(d.country).symbol+' '+fmtNum(totalSav)+' saved</span>'+
+          '<span style="background:var(--amberp);color:var(--amber);padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;">'+countryCur(d.country).symbol+' '+fmtNum(totalLoans)+' loans</span>'+
         '</div>'+
       '</div>'+
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">'+
-        '<div style="background:var(--greenp);border-radius:10px;padding:10px;text-align:center;">'+
-          '<div style="font-size:15px;font-weight:900;color:var(--green);">'+reps.length+'</div>'+
-          '<div style="font-size:9px;color:var(--gray);font-weight:700;">REPORTS</div></div>'+
-        '<div style="background:var(--bluep);border-radius:10px;padding:10px;text-align:center;">'+
-          '<div style="font-size:15px;font-weight:900;color:var(--blue);">'+groups.length+'</div>'+
-          '<div style="font-size:9px;color:var(--gray);font-weight:700;">GROUPS</div></div>'+
+
+      // ── REPORTS card (tappable) ──
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">'+
+        '<div onclick="window._renderCoachReports(\''+coachId+'\')" style="background:var(--greenp);border-radius:10px;padding:10px;text-align:center;cursor:pointer;border:1.5px solid transparent;transition:border-color .15s;" onmousedown="this.style.borderColor=\'var(--green)\'" onmouseup="this.style.borderColor=\'transparent\'">'+
+          '<div style="font-size:18px;font-weight:900;color:var(--green);">'+reps.length+'</div>'+
+          '<div style="font-size:9px;color:var(--green);font-weight:700;opacity:.7;">REPORTS</div>'+
+          '<div style="font-size:9px;color:var(--green);margin-top:3px;opacity:.6;">Tap to view ›</div>'+
+        '</div>'+
+        // ── GROUPS card (tappable) ──
+        '<div onclick="window._renderCoachGroups(\''+coachId+'\')" style="background:var(--bluep);border-radius:10px;padding:10px;text-align:center;cursor:pointer;border:1.5px solid transparent;transition:border-color .15s;" onmousedown="this.style.borderColor=\'var(--blue)\'" onmouseup="this.style.borderColor=\'transparent\'">'+
+          '<div style="font-size:18px;font-weight:900;color:var(--blue);">'+groups.length+'</div>'+
+          '<div style="font-size:9px;color:var(--blue);font-weight:700;opacity:.7;">GROUPS</div>'+
+          '<div style="font-size:9px;color:var(--blue);margin-top:3px;opacity:.6;">Tap to view ›</div>'+
+        '</div>'+
       '</div>'+
+
+      // ── STATUS card (tappable) ──
       '<div style="font-size:10px;font-weight:700;color:var(--navy);margin-bottom:6px;">'+d.thisMonth+' STATUS</div>'+
-      '<div style="padding:8px 12px;border-radius:10px;background:var(--off);font-size:12px;font-weight:700;margin-bottom:12px;">'+status+(subDate?' · Submitted '+subDate:'')+'</div>'+
+      '<div onclick="window._renderCoachStatus(\''+coachId+'\')" style="padding:10px 14px;border-radius:10px;background:'+statusBg+';margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;border:1.5px solid transparent;transition:border-color .15s;" onmousedown="this.style.borderColor=\''+statusColor+'\'" onmouseup="this.style.borderColor=\'transparent\'">'+
+        '<span style="font-size:13px;font-weight:800;color:'+statusColor+';">'+status+'</span>'+
+        '<span style="font-size:11px;color:'+statusColor+';opacity:.7;">'+(subDate?subDate:'Tap to view')+'  ›</span>'+
+      '</div>'+
+
       '<div style="font-size:10px;font-weight:700;color:var(--navy);margin-bottom:4px;">MONTHLY SAVINGS HISTORY</div>'+
-      (byMonth||'<div style="font-size:12px;color:var(--gray);padding:8px 0;">No reports yet</div>')+
-      '<div style="margin-top:14px;"><button onclick="cadminTab(\'reports\')" style="width:100%;padding:11px;background:var(--navy);color:#fff;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer;">View All Reports ›</button></div>';
+      (byMonth||'<div style="font-size:12px;color:var(--gray);padding:8px 0;">No reports yet</div>');
+
     document.getElementById('stat-modal-title').textContent='👤 '+coach.name;
     document.getElementById('stat-modal-body').innerHTML=html;
-    document.getElementById('stat-modal-overlay').style.display='flex';
+  };
+
+  // ── Drill-down: REPORTS list ──────────────────────────────────────────
+  window._renderCoachReports = function(coachId) {
+    var d = window._cadminStatData;
+    var coach = d.allCoaches.find(function(c){ return (c.id||c.name.replace(/\W/g,'_'))===coachId; });
+    if (!coach) return;
+    var reps = d.allReps.filter(function(r){ return r.coachName===coach.name; }).slice().reverse();
+    var sym = countryCur(d.country).symbol;
+    var html = '<button onclick="window._renderCoachMain(\''+coachId+'\')" style="background:var(--off);border:none;color:var(--navy);font-size:11px;font-weight:700;padding:6px 12px;border-radius:8px;cursor:pointer;margin-bottom:14px;">← Back</button>';
+    if (!reps.length) {
+      html += '<div style="text-align:center;padding:30px 0;color:var(--gray);font-size:12px;">No reports submitted yet.</div>';
+    } else {
+      reps.forEach(function(r) {
+        var onTime2=false;
+        if(r.date){var sd2=new Date(r.date);onTime2=sd2<=new Date(sd2.getFullYear(),sd2.getMonth(),10);}
+        var tc=onTime2?'var(--green)':'var(--amber)';
+        html += '<div style="background:var(--off);border-radius:10px;padding:10px 12px;margin-bottom:8px;border-left:4px solid '+tc+';">'+
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">'+
+            '<div>'+
+              '<div style="font-size:12px;font-weight:800;color:var(--navy);">'+(r.groupName||r.groupCode)+' <span style="font-size:10px;color:var(--gray);">'+r.groupCode+'</span></div>'+
+              '<div style="font-size:10px;color:var(--gray);">'+r.month+' · Week '+r.week+' · '+(r.date||'')+'</div>'+
+            '</div>'+
+            '<span style="font-size:10px;font-weight:700;color:'+tc+';">'+(onTime2?'On Time':'Late')+'</span>'+
+          '</div>'+
+          '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px;">'+
+            '<div style="background:var(--greenp);border-radius:7px;padding:6px;text-align:center;"><div style="font-size:11px;font-weight:800;color:var(--green);">'+sym+' '+fmtNum(r.savings)+'</div><div style="font-size:8px;color:var(--gray);">SAVINGS</div></div>'+
+            '<div style="background:var(--amberp);border-radius:7px;padding:6px;text-align:center;"><div style="font-size:11px;font-weight:800;color:var(--amber);">'+sym+' '+fmtNum(r.loans)+'</div><div style="font-size:8px;color:var(--gray);">LOANS</div></div>'+
+            '<div style="background:var(--bluep);border-radius:7px;padding:6px;text-align:center;"><div style="font-size:11px;font-weight:800;color:var(--blue);">'+(r.attendance||0)+'/'+( r.members||0)+'</div><div style="font-size:8px;color:var(--gray);">PRESENT</div></div>'+
+          '</div>'+
+        '</div>';
+      });
+    }
+    document.getElementById('stat-modal-title').textContent='📋 Reports — '+coach.name;
+    document.getElementById('stat-modal-body').innerHTML=html;
+  };
+
+  // ── Drill-down: GROUPS list ──────────────────────────────────────────
+  window._renderCoachGroups = function(coachId) {
+    var d = window._cadminStatData;
+    var coach = d.allCoaches.find(function(c){ return (c.id||c.name.replace(/\W/g,'_'))===coachId; });
+    if (!coach) return;
+    var reps = d.allReps.filter(function(r){ return r.coachName===coach.name; });
+    var sym = countryCur(d.country).symbol;
+    var groupMap = {};
+    reps.forEach(function(r) {
+      var k = r.groupCode;
+      if (!groupMap[k]) groupMap[k] = { code:k, name:r.groupName||k, reps:[], savings:0, loans:0, members:0 };
+      groupMap[k].reps.push(r);
+      groupMap[k].savings += Number(r.savings||0);
+      groupMap[k].loans += Number(r.loans||0);
+      groupMap[k].members = Number(r.members||0); // latest
+    });
+    var groups = Object.values(groupMap).sort(function(a,b){ return b.savings-a.savings; });
+    var html = '<button onclick="window._renderCoachMain(\''+coachId+'\')" style="background:var(--off);border:none;color:var(--navy);font-size:11px;font-weight:700;padding:6px 12px;border-radius:8px;cursor:pointer;margin-bottom:14px;">← Back</button>';
+    if (!groups.length) {
+      html += '<div style="text-align:center;padding:30px 0;color:var(--gray);font-size:12px;">No groups found.</div>';
+    } else {
+      groups.forEach(function(g, i) {
+        var lastRep = g.reps[g.reps.length-1];
+        var lastMonth = lastRep ? lastRep.month : '—';
+        html += '<div style="background:var(--off);border-radius:10px;padding:10px 12px;margin-bottom:8px;border-left:4px solid var(--blue);">'+
+          '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">'+
+            '<div>'+
+              '<div style="font-size:12px;font-weight:800;color:var(--navy);">'+(i+1)+'. '+g.name+'</div>'+
+              '<div style="font-size:10px;color:var(--gray);">'+g.code+' · '+g.reps.length+' report'+(g.reps.length!==1?'s':'')+' · last: '+lastMonth+'</div>'+
+            '</div>'+
+            '<div style="text-align:right;">'+
+              '<div style="font-size:12px;font-weight:800;color:var(--green);">'+sym+' '+fmtNum(g.savings)+'</div>'+
+              '<div style="font-size:9px;color:var(--gray);">total savings</div>'+
+            '</div>'+
+          '</div>'+
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">'+
+            '<div style="background:var(--amberp);border-radius:7px;padding:5px 8px;"><div style="font-size:11px;font-weight:700;color:var(--amber);">'+sym+' '+fmtNum(g.loans)+'</div><div style="font-size:8px;color:var(--gray);">LOANS</div></div>'+
+            '<div style="background:var(--bluep);border-radius:7px;padding:5px 8px;"><div style="font-size:11px;font-weight:700;color:var(--blue);">'+g.members+' members</div><div style="font-size:8px;color:var(--gray);">LATEST</div></div>'+
+          '</div>'+
+        '</div>';
+      });
+    }
+    document.getElementById('stat-modal-title').textContent='👥 Groups — '+coach.name;
+    document.getElementById('stat-modal-body').innerHTML=html;
+  };
+
+  // ── Drill-down: STATUS detail ─────────────────────────────────────────
+  window._renderCoachStatus = function(coachId) {
+    var d = window._cadminStatData;
+    var coach = d.allCoaches.find(function(c){ return (c.id||c.name.replace(/\W/g,'_'))===coachId; });
+    if (!coach) return;
+    var reps = d.allReps.filter(function(r){ return r.coachName===coach.name; });
+    var sym = countryCur(d.country).symbol;
+    // Build month-by-month submission status
+    var months = [...new Set(reps.map(function(r){ return r.month; }))].sort().reverse();
+    var html = '<button onclick="window._renderCoachMain(\''+coachId+'\')" style="background:var(--off);border:none;color:var(--navy);font-size:11px;font-weight:700;padding:6px 12px;border-radius:8px;cursor:pointer;margin-bottom:14px;">← Back</button>';
+
+    // Current month status
+    var cr=reps.filter(function(r){return r.month===d.thisMonth;});
+    var sub=cr.length>0;
+    var subDate=sub?cr[0].date:'';
+    var onTime=false;
+    if(sub&&subDate){var sd=new Date(subDate);onTime=sd<=new Date(sd.getFullYear(),sd.getMonth(),10);}
+    var statusDay=new Date().getDate();
+    var currStatus=sub?(onTime?'✅ On Time':'⚠️ Submitted Late'):(statusDay>10?'🔴 Overdue — not submitted':'⏳ Pending (due by 10th)');
+    var currColor=sub?(onTime?'var(--green)':'var(--amber)'):'var(--red)';
+    var currBg=sub?(onTime?'var(--greenp)':'var(--amberp)'):'var(--redp)';
+
+    html += '<div style="background:'+currBg+';border-radius:12px;padding:12px 14px;margin-bottom:16px;">'+
+      '<div style="font-size:10px;font-weight:700;color:'+currColor+';margin-bottom:4px;letter-spacing:.5px;">'+d.thisMonth.toUpperCase()+' — CURRENT</div>'+
+      '<div style="font-size:14px;font-weight:900;color:'+currColor+';">'+currStatus+'</div>'+
+      (subDate?'<div style="font-size:11px;color:'+currColor+';margin-top:4px;opacity:.75;">Submitted: '+subDate+'</div>':'')+
+      (sub?'<div style="font-size:11px;color:'+currColor+';margin-top:2px;opacity:.75;">Groups: '+cr.length+' report'+(cr.length!==1?'s':'')+' · '+sym+' '+fmtNum(cr.reduce(function(s,r){return s+Number(r.savings||0);},0))+' savings</div>':'')+
+    '</div>';
+
+    html += '<div style="font-size:10px;font-weight:700;color:var(--navy);margin-bottom:8px;letter-spacing:.5px;">SUBMISSION HISTORY</div>';
+
+    if (!months.length) {
+      html += '<div style="text-align:center;padding:20px 0;color:var(--gray);font-size:12px;">No history yet.</div>';
+    } else {
+      months.forEach(function(month) {
+        var mReps = reps.filter(function(r){ return r.month===month; });
+        var mDate = mReps[0]&&mReps[0].date ? mReps[0].date : '';
+        var mOT = false;
+        if(mDate){var md=new Date(mDate);mOT=md<=new Date(md.getFullYear(),md.getMonth(),10);}
+        var mColor = mOT?'var(--green)':'var(--amber)';
+        var mBg = mOT?'var(--greenp)':'var(--amberp)';
+        var mSav = mReps.reduce(function(s,r){return s+Number(r.savings||0);},0);
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;margin-bottom:6px;background:'+mBg+';border-radius:9px;">'+
+          '<div>'+
+            '<div style="font-size:11px;font-weight:700;color:'+mColor+';">'+month+'</div>'+
+            '<div style="font-size:9px;color:'+mColor+';opacity:.75;">'+(mOT?'✅ On Time':'⚠️ Late')+' · '+mReps.length+' report'+(mReps.length!==1?'s':'')+' · '+mDate+'</div>'+
+          '</div>'+
+          '<div style="font-size:12px;font-weight:800;color:'+mColor+';">'+sym+' '+fmtNum(mSav)+'</div>'+
+        '</div>';
+      });
+    }
+    document.getElementById('stat-modal-title').textContent='📅 Status — '+coach.name;
+    document.getElementById('stat-modal-body').innerHTML=html;
   };
 }
 
@@ -2257,6 +2512,8 @@ function renderCAdminAnalytics(el, country, allReps, allCoaches){
     h+='<div style="font-size:9px;color:var(--gray);">total savings</div></div></div>';
   });
 
+  h+='<div style="margin-top:16px;"><button onclick="dlCAdminAnalyticsExcel()" style="width:100%;padding:12px;background:#E8F5E9;color:#1B5E20;border:1.5px solid #1B5E20;border-radius:12px;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit;">📊 Export Analytics to Excel</button></div>';
+
   el.innerHTML=h;
 }
 
@@ -2267,74 +2524,607 @@ function cadminRemoveCoach(id){
   cadminTab('coaches');
 }
 
-function dlSingleReport(format, idx){
-  var country=session?session.country:'';
-  var reps=lr().filter(function(r){return r.country===country;});
-  var r=reps[idx];
-  if(!r){showToast('Report not found','err');return;}
-  var ts=new Date().toISOString().split('T')[0];
-  var fields=[
-    ['Country',r.country],['Group Code',r.groupCode],['Group Name',r.groupName||''],
-    ['District',r.district||''],['Sector',r.sector||''],
-    ['Coach',r.coachName],['Month',r.month],['Week',r.week||0],
-    ['Members',r.members||0],['Present',r.attendance||0],['Dropouts',r.dropouts||0],
-    ['Savings',Number(r.savings||0).toLocaleString()],['Loans',Number(r.loans||0).toLocaleString()],
-    ['Repayments',Number(r.repayments||0).toLocaleString()],['Loan Takers',r.loanTakers||0],
-    ['Cash Box',Number(r.box||0).toLocaleString()],['Bank',Number(r.bank||0).toLocaleString()],
-    ['Social Fund',Number(r.social||0).toLocaleString()],
-    ['Notes',r.notes||''],['Date',r.date||ts],
-  ];
-  if(format==='csv'){
-    var csv='100 Weeks VSLA — Report\r\nCountry:,'+r.country+'\r\nDate:,'+ts+'\r\n\r\n';
-    csv+=csvRow(['Field','Value']);
-    fields.forEach(function(f){csv+=csvRow([f[0],f[1]]);});
-    downloadFile('VSLA_'+r.groupCode+'_'+r.month.replace(' ','_')+'.csv',csv,'text/csv;charset=utf-8;');
+// ═══════════════════════════════════════════════════════════════════════════
+// PROFESSIONAL EXCEL EXPORT — SheetJS-based, cumulative quarterly per group
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Helper: determine quarter label from a month string like "May 2025"
+function getQuarterLabel(monthStr) {
+  if (!monthStr) return 'Q?';
+  var parts = monthStr.split(' ');
+  var month = parts[0]; var year = parts[1] || new Date().getFullYear();
+  var months = ['January','February','March','April','May','June',
+                'July','August','September','October','November','December'];
+  var idx = months.indexOf(month);
+  if (idx < 0) idx = 0;
+  var q = Math.floor(idx / 3) + 1;
+  return 'Q' + q + ' ' + year;
+}
+
+// Helper: safe sheet name (max 31 chars, no special chars)
+function safeSheetName(name) {
+  return (name || 'Group').replace(/[:\\\/\?\*\[\]]/g, '').substring(0, 31);
+}
+
+// Styling helpers using SheetJS cell objects
+function makeCell(v, type, style) {
+  return { v: v, t: type || (typeof v === 'number' ? 'n' : 's'), s: style || {} };
+}
+
+// Apply style to a range of cells in a worksheet
+function styleRange(ws, r1, c1, r2, c2, style) {
+  for (var r = r1; r <= r2; r++) {
+    for (var c = c1; c <= c2; c++) {
+      var addr = XLSX.utils.encode_cell({ r: r, c: c });
+      if (!ws[addr]) ws[addr] = { v: '', t: 's' };
+      ws[addr].s = Object.assign({}, ws[addr].s || {}, style);
+    }
+  }
+}
+
+// ── STYLE DEFINITIONS ──────────────────────────────────────────────────────
+var XL_STYLES = {
+  // Navy dark header
+  titleCell: {
+    font: { bold: true, sz: 16, color: { rgb: 'FFFFFF' }, name: 'Calibri' },
+    fill: { patternType: 'solid', fgColor: { rgb: '1B2A4A' } },
+    alignment: { horizontal: 'left', vertical: 'center' }
+  },
+  metaCell: {
+    font: { sz: 10, color: { rgb: 'FFFFFF' }, name: 'Calibri' },
+    fill: { patternType: 'solid', fgColor: { rgb: '1B2A4A' } },
+    alignment: { horizontal: 'left', vertical: 'center' }
+  },
+  // Column headers
+  colHeader: {
+    font: { bold: true, sz: 10, color: { rgb: 'FFFFFF' }, name: 'Calibri' },
+    fill: { patternType: 'solid', fgColor: { rgb: '1565C0' } },
+    alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+    border: {
+      top:    { style: 'thin', color: { rgb: 'BBCDE8' } },
+      bottom: { style: 'thin', color: { rgb: 'BBCDE8' } },
+      left:   { style: 'thin', color: { rgb: 'BBCDE8' } },
+      right:  { style: 'thin', color: { rgb: 'BBCDE8' } }
+    }
+  },
+  // Quarter section banner
+  quarterBanner: {
+    font: { bold: true, sz: 11, color: { rgb: 'FFFFFF' }, name: 'Calibri' },
+    fill: { patternType: 'solid', fgColor: { rgb: '1F3260' } },
+    alignment: { horizontal: 'left', vertical: 'center' }
+  },
+  // Data row — light
+  dataLight: {
+    font: { sz: 10, name: 'Calibri' },
+    fill: { patternType: 'solid', fgColor: { rgb: 'F4F7FB' } },
+    alignment: { vertical: 'center' },
+    border: {
+      bottom: { style: 'thin', color: { rgb: 'E4ECF5' } },
+      right:  { style: 'thin', color: { rgb: 'E4ECF5' } }
+    }
+  },
+  // Data row — white
+  dataWhite: {
+    font: { sz: 10, name: 'Calibri' },
+    fill: { patternType: 'solid', fgColor: { rgb: 'FFFFFF' } },
+    alignment: { vertical: 'center' },
+    border: {
+      bottom: { style: 'thin', color: { rgb: 'E4ECF5' } },
+      right:  { style: 'thin', color: { rgb: 'E4ECF5' } }
+    }
+  },
+  // Savings — green tint
+  savingsCell: {
+    font: { bold: true, sz: 10, color: { rgb: '1A7A5E' }, name: 'Calibri' },
+    fill: { patternType: 'solid', fgColor: { rgb: 'E6F4F0' } },
+    alignment: { horizontal: 'right', vertical: 'center' },
+    border: { bottom: { style: 'thin', color: { rgb: 'C3E8DF' } }, right: { style: 'thin', color: { rgb: 'C3E8DF' } } }
+  },
+  // Loans — amber tint
+  loansCell: {
+    font: { bold: true, sz: 10, color: { rgb: 'C47F0A' }, name: 'Calibri' },
+    fill: { patternType: 'solid', fgColor: { rgb: 'FEF3DC' } },
+    alignment: { horizontal: 'right', vertical: 'center' },
+    border: { bottom: { style: 'thin', color: { rgb: 'F5DFA0' } }, right: { style: 'thin', color: { rgb: 'F5DFA0' } } }
+  },
+  // Total row
+  totalRow: {
+    font: { bold: true, sz: 10, color: { rgb: 'FFFFFF' }, name: 'Calibri' },
+    fill: { patternType: 'solid', fgColor: { rgb: '1A7A5E' } },
+    alignment: { horizontal: 'right', vertical: 'center' },
+    border: { top: { style: 'medium', color: { rgb: '0D5240' } } }
+  },
+  totalLabel: {
+    font: { bold: true, sz: 10, color: { rgb: 'FFFFFF' }, name: 'Calibri' },
+    fill: { patternType: 'solid', fgColor: { rgb: '1A7A5E' } },
+    alignment: { horizontal: 'left', vertical: 'center' }
+  }
+};
+
+// Column definitions for data table
+var XL_COLS = [
+  { key: 'month',       label: 'Month',         w: 14 },
+  { key: 'week',        label: 'Week #',         w: 8  },
+  { key: 'date',        label: 'Date',           w: 12 },
+  { key: 'coachName',   label: 'Coach',          w: 20 },
+  { key: 'district',    label: 'District',       w: 16 },
+  { key: 'sector',      label: 'Sector',         w: 14 },
+  { key: 'members',     label: 'Members',        w: 10 },
+  { key: 'attendance',  label: 'Attendance',     w: 12 },
+  { key: 'dropouts',    label: 'Dropouts',       w: 10 },
+  { key: 'savings',     label: 'Savings',        w: 14 },
+  { key: 'loans',       label: 'Loans',          w: 14 },
+  { key: 'repayments',  label: 'Repayments',     w: 14 },
+  { key: 'loanTakers',  label: 'Loan Takers',    w: 12 },
+  { key: 'box',         label: 'Cash Box',       w: 13 },
+  { key: 'bank',        label: 'Bank',           w: 13 },
+  { key: 'social',      label: 'Social Fund',    w: 13 },
+  { key: 'notes',       label: 'Notes',          w: 30 }
+];
+var NUM_COLS = XL_COLS.length;
+var MONEY_KEYS = { savings:1, loans:1, repayments:1, box:1, bank:1, social:1 };
+
+// Build a single group sheet with cumulative quarterly sections
+function buildGroupSheet(groupCode, groupName, reps, country) {
+  var ws = {};
+  var merges = [];
+  var rowIdx = 0;
+
+  // ── Header banner ────────────────────────────────────────────────────────
+  var currency = countryCur(country).code || 'RWF';
+  var banner1 = '100 Weeks VSLA — ' + (groupName || groupCode) + '  [' + groupCode + ']';
+  var banner2 = country + '  |  Currency: ' + currency + '  |  Generated: ' + new Date().toISOString().split('T')[0];
+  ws[XLSX.utils.encode_cell({r:rowIdx,c:0})] = { v: banner1, t: 's', s: XL_STYLES.titleCell };
+  for (var c = 1; c < NUM_COLS; c++) {
+    ws[XLSX.utils.encode_cell({r:rowIdx,c:c})] = { v: '', t: 's', s: XL_STYLES.titleCell };
+  }
+  merges.push({ s:{r:rowIdx,c:0}, e:{r:rowIdx,c:NUM_COLS-1} });
+  rowIdx++;
+
+  ws[XLSX.utils.encode_cell({r:rowIdx,c:0})] = { v: banner2, t: 's', s: XL_STYLES.metaCell };
+  for (var c2 = 1; c2 < NUM_COLS; c2++) {
+    ws[XLSX.utils.encode_cell({r:rowIdx,c:c2})] = { v: '', t: 's', s: XL_STYLES.metaCell };
+  }
+  merges.push({ s:{r:rowIdx,c:0}, e:{r:rowIdx,c:NUM_COLS-1} });
+  rowIdx++;
+  rowIdx++; // blank row
+
+  // ── Group reports by quarter ─────────────────────────────────────────────
+  var quarterMap = {};
+  var quarterOrder = [];
+  reps.forEach(function(r) {
+    var q = getQuarterLabel(r.month);
+    if (!quarterMap[q]) { quarterMap[q] = []; quarterOrder.push(q); }
+    quarterMap[q].push(r);
+  });
+  quarterOrder.sort(); // chronological
+
+  quarterOrder.forEach(function(quarter, qIdx) {
+    var qReps = quarterMap[quarter];
+
+    // Quarter banner row
+    var qLabel = '📅  ' + quarter + '  (' + qReps.length + ' report' + (qReps.length !== 1 ? 's' : '') + ')';
+    ws[XLSX.utils.encode_cell({r:rowIdx,c:0})] = { v: qLabel, t: 's', s: XL_STYLES.quarterBanner };
+    for (var c3 = 1; c3 < NUM_COLS; c3++) {
+      ws[XLSX.utils.encode_cell({r:rowIdx,c:c3})] = { v: '', t: 's', s: XL_STYLES.quarterBanner };
+    }
+    merges.push({ s:{r:rowIdx,c:0}, e:{r:rowIdx,c:NUM_COLS-1} });
+    rowIdx++;
+
+    // Column headers
+    XL_COLS.forEach(function(col, ci) {
+      ws[XLSX.utils.encode_cell({r:rowIdx,c:ci})] = { v: col.label, t: 's', s: XL_STYLES.colHeader };
+    });
+    rowIdx++;
+
+    // Data rows
+    qReps.forEach(function(r, ri) {
+      var isLight = (ri % 2 === 0);
+      XL_COLS.forEach(function(col, ci) {
+        var raw = r[col.key];
+        var isNum = ['week','members','attendance','dropouts','loanTakers'].indexOf(col.key) >= 0;
+        var isMoney = !!MONEY_KEYS[col.key];
+        var val, type, style;
+        if (isMoney) {
+          val = Number(raw || 0);
+          type = 'n';
+          style = Object.assign({}, XL_STYLES.savingsCell);
+          if (col.key === 'loans') style = Object.assign({}, XL_STYLES.loansCell);
+        } else if (isNum) {
+          val = Number(raw || 0);
+          type = 'n';
+          style = Object.assign({}, isLight ? XL_STYLES.dataLight : XL_STYLES.dataWhite, { alignment: { horizontal: 'center', vertical: 'center' } });
+        } else {
+          val = String(raw == null ? '' : raw);
+          type = 's';
+          style = isLight ? XL_STYLES.dataLight : XL_STYLES.dataWhite;
+        }
+        ws[XLSX.utils.encode_cell({r:rowIdx,c:ci})] = { v: val, t: type, s: style };
+      });
+      rowIdx++;
+    });
+
+    // Quarter totals row
+    var qTotals = {};
+    ['savings','loans','repayments','box','bank','social','members','attendance','dropouts'].forEach(function(k) {
+      qTotals[k] = qReps.reduce(function(s,r){ return s + Number(r[k]||0); }, 0);
+    });
+    XL_COLS.forEach(function(col, ci) {
+      var isMoney = !!MONEY_KEYS[col.key];
+      var isNum = ['members','attendance','dropouts'].indexOf(col.key) >= 0;
+      var val, type;
+      if (ci === 0) { val = 'QUARTER TOTAL'; type = 's'; }
+      else if (isMoney || isNum) { val = qTotals[col.key] || 0; type = 'n'; }
+      else { val = ''; type = 's'; }
+      ws[XLSX.utils.encode_cell({r:rowIdx,c:ci})] = {
+        v: val, t: type,
+        s: ci === 0 ? XL_STYLES.totalLabel : XL_STYLES.totalRow
+      };
+    });
+    rowIdx++;
+    rowIdx++; // blank spacer between quarters
+  });
+
+  // ── Annual summary section ───────────────────────────────────────────────
+  rowIdx++;
+  var sumLabel = '📊  ANNUAL SUMMARY — ' + (groupName || groupCode);
+  ws[XLSX.utils.encode_cell({r:rowIdx,c:0})] = { v: sumLabel, t: 's', s: XL_STYLES.quarterBanner };
+  for (var c4 = 1; c4 < NUM_COLS; c4++) {
+    ws[XLSX.utils.encode_cell({r:rowIdx,c:c4})] = { v: '', t: 's', s: XL_STYLES.quarterBanner };
+  }
+  merges.push({ s:{r:rowIdx,c:0}, e:{r:rowIdx,c:NUM_COLS-1} });
+  rowIdx++;
+
+  // Summary table: quarter | savings | loans | repayments | members | reports
+  var sumHeaders = ['Quarter','Total Savings','Total Loans','Repayments','Members (avg)','# Reports'];
+  sumHeaders.forEach(function(h, i) {
+    ws[XLSX.utils.encode_cell({r:rowIdx,c:i})] = { v: h, t: 's', s: XL_STYLES.colHeader };
+  });
+  rowIdx++;
+
+  quarterOrder.forEach(function(quarter, qi) {
+    var qr = quarterMap[quarter];
+    var qSav = qr.reduce(function(s,r){return s+Number(r.savings||0);},0);
+    var qLoan = qr.reduce(function(s,r){return s+Number(r.loans||0);},0);
+    var qRep = qr.reduce(function(s,r){return s+Number(r.repayments||0);},0);
+    var qMem = qr.length ? Math.round(qr.reduce(function(s,r){return s+Number(r.members||0);},0)/qr.length) : 0;
+    var isLight = qi % 2 === 0;
+    var base = isLight ? XL_STYLES.dataLight : XL_STYLES.dataWhite;
+    var vals = [quarter, qSav, qLoan, qRep, qMem, qr.length];
+    vals.forEach(function(v, i) {
+      var isMoney = i >= 1 && i <= 3;
+      ws[XLSX.utils.encode_cell({r:rowIdx,c:i})] = {
+        v: v, t: typeof v==='number'?'n':'s',
+        s: isMoney ? Object.assign({}, XL_STYLES.savingsCell) : Object.assign({}, base, {alignment:{horizontal:'center',vertical:'center'}})
+      };
+    });
+    rowIdx++;
+  });
+
+  // Grand total row
+  var grandSav  = reps.reduce(function(s,r){return s+Number(r.savings||0);},0);
+  var grandLoan = reps.reduce(function(s,r){return s+Number(r.loans||0);},0);
+  var grandRep  = reps.reduce(function(s,r){return s+Number(r.repayments||0);},0);
+  var grandMem  = reps.length ? Math.round(reps.reduce(function(s,r){return s+Number(r.members||0);},0)/reps.length) : 0;
+  var grandVals = ['GRAND TOTAL', grandSav, grandLoan, grandRep, grandMem, reps.length];
+  grandVals.forEach(function(v, i) {
+    ws[XLSX.utils.encode_cell({r:rowIdx,c:i})] = {
+      v: v, t: typeof v==='number'?'n':'s',
+      s: i === 0 ? XL_STYLES.totalLabel : XL_STYLES.totalRow
+    };
+  });
+  rowIdx++;
+
+  ws['!ref'] = XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r:rowIdx,c:NUM_COLS-1} });
+  ws['!merges'] = merges;
+  ws['!cols'] = XL_COLS.map(function(col){ return { wch: col.w }; });
+  ws['!rows'] = [];
+  ws['!rows'][0] = { hpt: 26 };
+  ws['!rows'][1] = { hpt: 16 };
+
+  return ws;
+}
+
+// ── Main export: one sheet per group, cumulative across quarters ──────────
+function dlExcelByGroup(country) {
+  var allReps = lr().filter(function(r){ return r.country === (country || (session && session.country) || ''); });
+  if (!allReps.length) { showToast('No reports to export', 'err'); return; }
+  if (typeof XLSX === 'undefined') { showToast('Excel library not ready — try again in a moment', 'err'); return; }
+
+  var wb = XLSX.utils.book_new();
+  wb.Props = { Title: '100 Weeks VSLA Report', Author: '100 Weeks VSLA App', CreatedDate: new Date() };
+
+  // ── Cover / Summary sheet ──────────────────────────────────────────────
+  var covWs = {};
+  var covMerges = [];
+  var rr = 0;
+  var ts = new Date().toISOString().split('T')[0];
+
+  var covTitle = '100 Weeks VSLA — ' + (country || '') + ' Annual Report';
+  covWs[XLSX.utils.encode_cell({r:rr,c:0})] = { v: covTitle, t:'s', s: XL_STYLES.titleCell };
+  for (var ci=1;ci<8;ci++) covWs[XLSX.utils.encode_cell({r:rr,c:ci})] = { v:'',t:'s',s:XL_STYLES.titleCell };
+  covMerges.push({s:{r:rr,c:0},e:{r:rr,c:7}});
+  rr++;
+  covWs[XLSX.utils.encode_cell({r:rr,c:0})] = { v: 'Generated: '+ts+'  |  Total reports: '+allReps.length, t:'s', s:XL_STYLES.metaCell };
+  for (var ci2=1;ci2<8;ci2++) covWs[XLSX.utils.encode_cell({r:rr,c:ci2})] = {v:'',t:'s',s:XL_STYLES.metaCell};
+  covMerges.push({s:{r:rr,c:0},e:{r:rr,c:7}});
+  rr+=2;
+
+  var sumHdrs = ['Group Code','Group Name','Coach','District','Quarters Submitted','Total Reports','Total Savings','Total Loans'];
+  sumHdrs.forEach(function(h,i){ covWs[XLSX.utils.encode_cell({r:rr,c:i})]={v:h,t:'s',s:XL_STYLES.colHeader}; });
+  rr++;
+
+  var groupMap = {};
+  allReps.forEach(function(r) {
+    var k = r.groupCode;
+    if (!groupMap[k]) groupMap[k] = { code:r.groupCode, name:r.groupName||r.groupCode, coach:r.coachName, district:r.district||'', quarters:{}, reps:[] };
+    groupMap[k].reps.push(r);
+    groupMap[k].quarters[getQuarterLabel(r.month)] = true;
+  });
+
+  Object.values(groupMap).sort(function(a,b){ return b.reps.reduce(function(s,r){return s+Number(r.savings||0);},0) - a.reps.reduce(function(s,r){return s+Number(r.savings||0);},0); }).forEach(function(g, gi) {
+    var totalSav = g.reps.reduce(function(s,r){return s+Number(r.savings||0);},0);
+    var totalLoan = g.reps.reduce(function(s,r){return s+Number(r.loans||0);},0);
+    var isLight = gi%2===0;
+    var base = isLight?XL_STYLES.dataLight:XL_STYLES.dataWhite;
+    var vals = [g.code, g.name, g.coach, g.district, Object.keys(g.quarters).join(', '), g.reps.length, totalSav, totalLoan];
+    vals.forEach(function(v,i){
+      covWs[XLSX.utils.encode_cell({r:rr,c:i})]={
+        v:v, t:typeof v==='number'?'n':'s',
+        s:i>=6?Object.assign({},XL_STYLES.savingsCell):Object.assign({},base,{alignment:{horizontal:i<2?'left':'center',vertical:'center'}})
+      };
+    });
+    rr++;
+  });
+  covWs['!ref'] = XLSX.utils.encode_range({s:{r:0,c:0},e:{r:rr,c:7}});
+  covWs['!merges'] = covMerges;
+  covWs['!cols'] = [{wch:12},{wch:22},{wch:20},{wch:16},{wch:26},{wch:12},{wch:15},{wch:15}];
+  covWs['!rows'] = [{hpt:26},{hpt:16}];
+  XLSX.utils.book_append_sheet(wb, covWs, 'Summary');
+
+  // ── One sheet per group ────────────────────────────────────────────────
+  Object.values(groupMap).forEach(function(g) {
+    var ws = buildGroupSheet(g.code, g.name, g.reps, country || (session && session.country) || '');
+    var sheetName = safeSheetName(g.code + ' ' + g.name);
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  });
+
+  // ── Write & download ───────────────────────────────────────────────────
+  var fname = '100Weeks_VSLA_' + (country||'').replace(/ /g,'_') + '_' + ts + '.xlsx';
+  XLSX.writeFile(wb, fname);
+  showToast('✅ Excel report downloaded!');
+}
+
+// ── Single-report Excel download ─────────────────────────────────────────
+function dlSingleReport(format, reportId){
+  var country = session ? session.country : '';
+  var reps = lr().filter(function(r){ return r.country === country; });
+  // Match by submittedAt (stable ID) or fall back to numeric index for legacy buttons
+  var r = reps.find(function(x){ return x.submittedAt === reportId; });
+  if (!r && !isNaN(Number(reportId))) r = reps[Number(reportId)];
+  if(!r){ showToast('Report not found','err'); return; }
+
+  if (format === 'xlsx' || format === 'csv') {
+    // Build a mini workbook for this one report
+    if (typeof XLSX === 'undefined') { showToast('Excel library not ready','err'); return; }
+    var wb = XLSX.utils.book_new();
+    var ws = buildGroupSheet(r.groupCode, r.groupName||r.groupCode, [r], country);
+    XLSX.utils.book_append_sheet(wb, ws, safeSheetName(r.groupCode));
+    var ts = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(wb, 'VSLA_'+r.groupCode+'_'+r.month.replace(' ','_')+'_'+ts+'.xlsx');
+    showToast('✅ Excel report downloaded!');
   } else {
-    var html=`<h1>VSLA Report — ${r.groupName||r.groupCode}</h1>
-      <div class="sub">Coach: ${r.coachName} &middot; ${r.month} &middot; Generated ${ts}</div>
-      <div class="section">Group: ${r.groupName||r.groupCode} — <span class="badge">${r.groupCode}</span></div>
-      <table><tr><th>Field</th><th>Value</th></tr>
-      ${fields.map(function(f){return '<tr><td>'+f[0]+'</td><td><strong>'+f[1]+'</strong></td></tr>';}).join('')}
-      </table>`;
+    // PDF
+    var ts2 = new Date().toISOString().split('T')[0];
+    var fields=[
+      ['Country',r.country],['Group Code',r.groupCode],['Group Name',r.groupName||''],
+      ['District',r.district||''],['Sector',r.sector||''],
+      ['Coach',r.coachName],['Month',r.month],['Week',r.week||0],
+      ['Members',r.members||0],['Present',r.attendance||0],['Dropouts',r.dropouts||0],
+      ['Savings',Number(r.savings||0).toLocaleString()],['Loans',Number(r.loans||0).toLocaleString()],
+      ['Repayments',Number(r.repayments||0).toLocaleString()],['Loan Takers',r.loanTakers||0],
+      ['Cash Box',Number(r.box||0).toLocaleString()],['Bank',Number(r.bank||0).toLocaleString()],
+      ['Social Fund',Number(r.social||0).toLocaleString()],
+      ['Notes',r.notes||''],['Date',r.date||ts2],
+    ];
+    var html='<h1>VSLA Report — '+(r.groupName||r.groupCode)+'</h1>'+
+      '<div class="sub">Coach: '+r.coachName+' &middot; '+r.month+' &middot; Generated '+ts2+'</div>'+
+      '<div class="section">Group: '+(r.groupName||r.groupCode)+' — <span class="badge">'+r.groupCode+'</span></div>'+
+      '<table><tr><th>Field</th><th>Value</th></tr>'+
+      fields.map(function(f){return '<tr><td>'+f[0]+'</td><td><strong>'+f[1]+'</strong></td></tr>';}).join('')+
+      '</table>';
     printToPDF('VSLA Report — '+r.groupCode, html);
   }
 }
+
+// ── Country admin bulk export → cumulative Excel ─────────────────────────
 function dlCountryAdmin(format){
-  var country=session?session.country:'';
-  var reps=lr().filter(function(r){return r.country===country;});
-  var ts=new Date().toISOString().split('T')[0];
-  if(format==='csv'){
-    var csv='100 Weeks VSLA - '+country+' Report\r\nDate:,'+ts+'\r\n\r\n';
-    csv+=csvRow(['Month','Group Code','Group Name','Coach','District','Sector','Members','Attendance','Week','Savings','Loans','Repayments','Box','Bank','Social','Date']);
-    reps.forEach(function(r){csv+=csvRow([r.month,r.groupCode,r.groupName||'',r.coachName,r.district||'',r.sector||'',r.members||0,r.attendance||0,r.week||0,r.savings||0,r.loans||0,r.repayments||0,r.box||0,r.bank||0,r.social||0,r.date||'']);});
-    downloadFile('100weeks_'+country.replace(/ /g,'_')+'_'+ts+'.csv',csv,'text/csv;charset=utf-8;');
+  var country = session ? session.country : '';
+  if (format === 'xlsx' || format === 'csv') {
+    dlExcelByGroup(country);
   } else {
-    var coachStatus='';
-    var thisMonth=getCurrentMonth();
-    var allCoaches=lc().filter(function(c){return c.country===country;});
-    var now=new Date();
+    // PDF fallback
+    var reps = lr().filter(function(r){ return r.country === country; });
+    var ts = new Date().toISOString().split('T')[0];
+    var coachStatus = '';
+    var thisMonth = getCurrentMonth();
+    var allCoaches = lc().filter(function(c){ return c.country === country; });
     allCoaches.forEach(function(c){
-      var cr=reps.filter(function(r){return r.coachName===c.name&&r.month===thisMonth;});
-      var submitted=cr.length>0;
-      var subDate=submitted?cr[0].date:'';
-      var onTime=false;
-      if(submitted&&subDate){var sd=new Date(subDate);onTime=sd<=new Date(sd.getFullYear(),sd.getMonth(),10);}
-      var status=submitted?(onTime?'On Time':'Late'):'Missing';
-      coachStatus+='<tr><td>'+c.name+'</td><td>'+(c.district||'')+'</td><td style="color:'+(status==='On Time'?'green':(status==='Late'?'orange':'red'))+';">'+status+'</td><td>'+subDate+'</td></tr>';
+      var cr = reps.filter(function(r){ return r.coachName===c.name && r.month===thisMonth; });
+      var submitted = cr.length > 0;
+      var subDate = submitted ? cr[0].date : '';
+      var onTime = false;
+      if(submitted && subDate){ var sd=new Date(subDate); onTime=sd<=new Date(sd.getFullYear(),sd.getMonth(),10); }
+      var status = submitted ? (onTime?'On Time':'Late') : 'Missing';
+      coachStatus += '<tr><td>'+c.name+'</td><td>'+(c.district||'')+'</td><td style="color:'+(status==='On Time'?'green':(status==='Late'?'orange':'red'))+';">'+status+'</td><td>'+subDate+'</td></tr>';
     });
-    var rows=reps.map(function(r){return '<tr><td>'+r.month+'</td><td>'+(r.groupName||r.groupCode)+'</td><td>'+r.coachName+'</td><td>'+(r.district||'')+'</td><td>'+(r.members||0)+'</td><td>'+(r.savings||0)+'</td><td>'+(r.loans||0)+'</td><td>'+(r.date||'')+'</td></tr>';}).join('');
-    var htm='<h1>100 Weeks VSLA - '+country+'</h1><div class="sub">Generated: '+ts+' &middot; Total reports: '+reps.length+'</div>';
-    htm+='<div class="section">'+thisMonth+' Coach Submission Status</div>';
-    htm+='<table><tr><th>Coach</th><th>District</th><th>Status</th><th>Submitted</th></tr>'+coachStatus+'</table>';
-    htm+='<div class="section">All Reports</div>';
-    htm+='<table><tr><th>Month</th><th>Group</th><th>Coach</th><th>District</th><th>Members</th><th>Savings</th><th>Loans</th><th>Date</th></tr>'+rows+'</table>';
-    printToPDF('100 Weeks '+country+' Report',htm);
+    var rows = reps.map(function(r){ return '<tr><td>'+r.month+'</td><td>'+(r.groupName||r.groupCode)+'</td><td>'+r.coachName+'</td><td>'+(r.district||'')+'</td><td>'+(r.members||0)+'</td><td>'+(r.savings||0)+'</td><td>'+(r.loans||0)+'</td><td>'+(r.date||'')+'</td></tr>'; }).join('');
+    var htm = '<h1>100 Weeks VSLA - '+country+'</h1><div class="sub">Generated: '+ts+' &middot; Total reports: '+reps.length+'</div>';
+    htm += '<div class="section">'+thisMonth+' Coach Submission Status</div>';
+    htm += '<table><tr><th>Coach</th><th>District</th><th>Status</th><th>Submitted</th></tr>'+coachStatus+'</table>';
+    htm += '<div class="section">All Reports</div>';
+    htm += '<table><tr><th>Month</th><th>Group</th><th>Coach</th><th>District</th><th>Members</th><th>Savings</th><th>Loans</th><th>Date</th></tr>'+rows+'</table>';
+    printToPDF('100 Weeks '+country+' Report', htm);
   }
 }
 
 function getCurrentMonth(){
   var now=new Date();
   return now.toLocaleString('default',{month:'long'})+' '+now.getFullYear();
+}
+
+// ── FLAT COLUMNS for all-submissions sheets ──────────────────────────────
+var FLAT_COLS = [
+  { key: 'country',      label: 'Country',        w: 14 },
+  { key: 'groupCode',    label: 'Group Code',      w: 12 },
+  { key: 'groupName',    label: 'Group Name',      w: 22 },
+  { key: 'coachName',    label: 'Coach',           w: 20 },
+  { key: 'district',     label: 'District',        w: 16 },
+  { key: 'sector',       label: 'Sector',          w: 14 },
+  { key: 'month',        label: 'Month',           w: 14 },
+  { key: 'week',         label: 'Week #',          w:  8 },
+  { key: 'date',         label: 'Date',            w: 12 },
+  { key: 'members',      label: 'Members',         w: 10 },
+  { key: 'attendance',   label: 'Attendance',      w: 12 },
+  { key: 'dropouts',     label: 'Dropouts',        w: 10 },
+  { key: 'savings',      label: 'Savings',         w: 14 },
+  { key: 'loans',        label: 'Loans',           w: 14 },
+  { key: 'repayments',   label: 'Repayments',      w: 14 },
+  { key: 'loanTakers',   label: 'Loan Takers',     w: 12 },
+  { key: 'box',          label: 'Cash Box',        w: 13 },
+  { key: 'bank',         label: 'Bank',            w: 13 },
+  { key: 'social',       label: 'Social Fund',     w: 13 },
+  { key: 'notes',        label: 'Notes',           w: 30 }
+];
+var FLAT_NUM_COLS = FLAT_COLS.length;
+var FLAT_MONEY_KEYS = { savings:1, loans:1, repayments:1, box:1, bank:1, social:1 };
+var FLAT_INT_KEYS   = { week:1, members:1, attendance:1, dropouts:1, loanTakers:1 };
+
+// Build a flat worksheet from an array of report objects
+function buildFlatSheet(reps, title, subtitle) {
+  var ws = {};
+  var merges = [];
+  var row = 0;
+  var ts = new Date().toISOString().split('T')[0];
+
+  // Title row
+  ws[XLSX.utils.encode_cell({r:row,c:0})] = { v: title, t:'s', s: XL_STYLES.titleCell };
+  for (var ci=1; ci<FLAT_NUM_COLS; ci++) {
+    ws[XLSX.utils.encode_cell({r:row,c:ci})] = { v:'', t:'s', s: XL_STYLES.titleCell };
+  }
+  merges.push({s:{r:row,c:0},e:{r:row,c:FLAT_NUM_COLS-1}});
+  row++;
+
+  // Subtitle / meta row
+  var meta = subtitle + '  |  Generated: ' + ts + '  |  Total submissions: ' + reps.length;
+  ws[XLSX.utils.encode_cell({r:row,c:0})] = { v: meta, t:'s', s: XL_STYLES.metaCell };
+  for (var ci2=1; ci2<FLAT_NUM_COLS; ci2++) {
+    ws[XLSX.utils.encode_cell({r:row,c:ci2})] = { v:'', t:'s', s: XL_STYLES.metaCell };
+  }
+  merges.push({s:{r:row,c:0},e:{r:row,c:FLAT_NUM_COLS-1}});
+  row++;
+
+  // Column headers
+  FLAT_COLS.forEach(function(col, ci) {
+    ws[XLSX.utils.encode_cell({r:row,c:ci})] = { v: col.label, t:'s', s: XL_STYLES.colHeader };
+  });
+  row++;
+
+  // Data rows
+  reps.forEach(function(r, ri) {
+    var isLight = ri % 2 === 0;
+    FLAT_COLS.forEach(function(col, ci) {
+      var raw = r[col.key];
+      var isMoney = !!FLAT_MONEY_KEYS[col.key];
+      var isInt   = !!FLAT_INT_KEYS[col.key];
+      var val, type, style;
+      if (isMoney) {
+        val = Number(raw || 0);
+        type = 'n';
+        style = col.key === 'loans'
+          ? Object.assign({}, XL_STYLES.loansCell)
+          : Object.assign({}, XL_STYLES.savingsCell);
+      } else if (isInt) {
+        val = Number(raw || 0);
+        type = 'n';
+        style = Object.assign({}, isLight ? XL_STYLES.dataLight : XL_STYLES.dataWhite,
+                { alignment: { horizontal:'center', vertical:'center' } });
+      } else {
+        val = String(raw == null ? '' : raw);
+        type = 's';
+        style = isLight ? XL_STYLES.dataLight : XL_STYLES.dataWhite;
+      }
+      ws[XLSX.utils.encode_cell({r:row,c:ci})] = { v: val, t: type, s: style };
+    });
+    row++;
+  });
+
+  // Totals row
+  FLAT_COLS.forEach(function(col, ci) {
+    var isMoney = !!FLAT_MONEY_KEYS[col.key];
+    var isInt   = !!FLAT_INT_KEYS[col.key];
+    var val, type;
+    if (ci === 0) { val = 'TOTAL'; type = 's'; }
+    else if (isMoney || isInt) {
+      val = reps.reduce(function(s,r){ return s + Number(r[col.key]||0); }, 0);
+      type = 'n';
+    } else { val = ''; type = 's'; }
+    ws[XLSX.utils.encode_cell({r:row,c:ci})] = {
+      v: val, t: type,
+      s: ci === 0 ? XL_STYLES.totalLabel : XL_STYLES.totalRow
+    };
+  });
+  row++;
+
+  ws['!ref']    = XLSX.utils.encode_range({s:{r:0,c:0},e:{r:row,c:FLAT_NUM_COLS-1}});
+  ws['!merges'] = merges;
+  ws['!cols']   = FLAT_COLS.map(function(col){ return { wch: col.w }; });
+  ws['!rows']   = [{hpt:26},{hpt:16}];
+  return ws;
+}
+
+// ── MAIN ADMIN: all submissions from every country, one flat sheet ─────────
+function dlAllSubmissionsExcel() {
+  if (typeof XLSX === 'undefined') { showToast('Excel library not ready — try again','err'); return; }
+  var allReps = lr();
+  if (!allReps.length) { showToast('No submissions to export','err'); return; }
+  if (!confirm('Download all ' + allReps.length + ' submissions from all countries as Excel?')) return;
+  showToast('⏳ Building Excel file…');
+  setTimeout(function() {
+    var wb = XLSX.utils.book_new();
+    wb.Props = { Title:'100 Weeks VSLA — All Submissions', Author:'100 Weeks VSLA App', CreatedDate: new Date() };
+    var ws = buildFlatSheet(
+      allReps,
+      '100 Weeks VSLA — All Countries — All Submissions',
+      'All countries · ' + allReps.length + ' total submissions'
+    );
+    XLSX.utils.book_append_sheet(wb, ws, 'All Submissions');
+    var ts = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(wb, '100Weeks_All_Submissions_' + ts + '.xlsx');
+    showToast('✅ All-submissions Excel downloaded!');
+  }, 80);
+}
+
+// ── COUNTRY ADMIN: flat sheet of all submissions for one country ──────────
+function dlCountryAllSubmissions(country) {
+  if (typeof XLSX === 'undefined') { showToast('Excel library not ready — try again','err'); return; }
+  var cty = country || (session && session.country) || '';
+  var reps = lr().filter(function(r){ return r.country === cty; });
+  if (!reps.length) { showToast('No submissions for ' + cty,'err'); return; }
+  showToast('⏳ Building Excel file…');
+  setTimeout(function() {
+    var wb = XLSX.utils.book_new();
+    wb.Props = { Title:'100 Weeks VSLA — ' + cty + ' All Submissions', Author:'100 Weeks VSLA App', CreatedDate: new Date() };
+    var ws = buildFlatSheet(
+      reps,
+      '100 Weeks VSLA — ' + cty + ' — All Submissions',
+      cty + ' · ' + reps.length + ' submissions'
+    );
+    XLSX.utils.book_append_sheet(wb, ws, 'All Submissions');
+    var ts = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(wb, '100Weeks_' + cty.replace(/ /g,'_') + '_AllSubmissions_' + ts + '.xlsx');
+    showToast('✅ ' + cty + ' all-submissions Excel downloaded!');
+  }, 80);
 }
 
 function csvRow(arr){
@@ -2387,6 +3177,161 @@ function injectDownloadBars(){
 
 function enhanceAdminExport(){
   // Enhancement stub — export buttons are already present in the UI
+}
+
+function buildAdminReportCards(reps) {
+  var tl = t();
+  if (!reps.length) return '<div style="text-align:center;padding:30px;color:var(--gray);font-size:12px;">No reports match your filter.</div>';
+  return reps.map(function(r){
+    var cfg = COUNTRIES_CFG[r.country]||{flag:'🌍',color:'var(--navy)'};
+    return '<div class="card"><div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;">'+
+      '<span style="font-size:18px">'+cfg.flag+'</span>'+
+      '<div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--navy)">'+r.groupName+'</div>'+
+      '<div style="font-size:10.5px;color:var(--gray)">'+r.coachName+' · '+r.month+'</div></div>'+
+      '<span class="code-badge" style="background:'+cfg.color+'">'+r.groupCode+'</span></div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">'+
+      '<div style="background:var(--greenp);border-radius:8px;padding:7px 10px;">'+
+      '<div style="font-size:9px;color:var(--green);font-weight:700">'+tl.savings.toUpperCase()+'</div>'+
+      '<div style="font-size:12px;font-weight:800;color:var(--green)">'+countryCur(r.country).symbol+' '+fmtNum(r.savings)+'</div></div>'+
+      '<div style="background:var(--bluep);border-radius:8px;padding:7px 10px;">'+
+      '<div style="font-size:9px;color:var(--blue);font-weight:700">'+tl.present.toUpperCase()+'</div>'+
+      '<div style="font-size:12px;font-weight:800;color:var(--blue)">'+(r.attendance||0)+' / '+(r.members||0)+'</div></div>'+
+      '</div></div>';
+  }).join('');
+}
+
+function applyAdminReportFilters() {
+  var countryFilter = (document.getElementById('admin-rep-country-filter')||{value:''}).value;
+  var search = (document.getElementById('admin-rep-search')||{value:''}).value.trim().toLowerCase();
+  var all = [...lr()].reverse();
+  var filtered = all.filter(function(r){
+    if (countryFilter && r.country !== countryFilter) return false;
+    if (search) {
+      var haystack = ((r.coachName||'') + ' ' + (r.groupName||'') + ' ' + (r.groupCode||'')).toLowerCase();
+      if (haystack.indexOf(search) < 0) return false;
+    }
+    return true;
+  });
+  var list = document.getElementById('admin-rep-list');
+  if (list) list.innerHTML = buildAdminReportCards(filtered);
+}
+
+// ── Analytics Excel export for country admin ─────────────────────────────
+function dlCAdminAnalyticsExcel() {
+  if (typeof XLSX === 'undefined') { showToast('Excel library not ready','err'); return; }
+  var cty = session ? session.country : '';
+  var reps = lr().filter(function(r){ return r.country === cty; });
+  if (!reps.length) { showToast('No data to export','err'); return; }
+
+  var wb = XLSX.utils.book_new();
+  var ts = new Date().toISOString().split('T')[0];
+
+  // Sheet 1: Monthly totals
+  var byMonth = {};
+  reps.forEach(function(r){
+    if (!byMonth[r.month]) byMonth[r.month] = {savings:0,loans:0,repayments:0,members:0,reports:0};
+    byMonth[r.month].savings    += Number(r.savings||0);
+    byMonth[r.month].loans      += Number(r.loans||0);
+    byMonth[r.month].repayments += Number(r.repayments||0);
+    byMonth[r.month].members    += Number(r.members||0);
+    byMonth[r.month].reports    += 1;
+  });
+  var mHeaders = ['Month','Total Savings','Total Loans','Repayments','Members','Reports'];
+  var mRows = Object.keys(byMonth).sort().map(function(m){
+    var d = byMonth[m];
+    return [m, d.savings, d.loans, d.repayments, d.members, d.reports];
+  });
+  var wsM = XLSX.utils.aoa_to_sheet([mHeaders].concat(mRows));
+  wsM['!cols'] = [{wch:16},{wch:16},{wch:14},{wch:14},{wch:12},{wch:10}];
+  XLSX.utils.book_append_sheet(wb, wsM, 'Monthly Totals');
+
+  // Sheet 2: Top groups
+  var groupTotals = {};
+  reps.forEach(function(r){
+    if (!groupTotals[r.groupCode]) groupTotals[r.groupCode] = {name:r.groupName||r.groupCode,savings:0,loans:0,coach:r.coachName,reports:0};
+    groupTotals[r.groupCode].savings += Number(r.savings||0);
+    groupTotals[r.groupCode].loans   += Number(r.loans||0);
+    groupTotals[r.groupCode].reports += 1;
+  });
+  var gHeaders = ['Rank','Group Code','Group Name','Coach','Total Savings','Total Loans','Reports'];
+  var gRows = Object.keys(groupTotals).map(function(k){ return Object.assign({code:k},groupTotals[k]); })
+    .sort(function(a,b){ return b.savings-a.savings; })
+    .map(function(g,i){ return [i+1, g.code, g.name, g.coach, g.savings, g.loans, g.reports]; });
+  var wsG = XLSX.utils.aoa_to_sheet([gHeaders].concat(gRows));
+  wsG['!cols'] = [{wch:6},{wch:12},{wch:22},{wch:20},{wch:14},{wch:14},{wch:10}];
+  XLSX.utils.book_append_sheet(wb, wsG, 'Groups Ranking');
+
+  // Sheet 3: Coach performance
+  var coachStats = {};
+  reps.forEach(function(r){
+    if (!coachStats[r.coachName]) coachStats[r.coachName] = {savings:0,reports:0,groups:{}};
+    coachStats[r.coachName].savings += Number(r.savings||0);
+    coachStats[r.coachName].reports += 1;
+    coachStats[r.coachName].groups[r.groupCode] = true;
+  });
+  var cHeaders = ['Coach','Groups','Reports','Total Savings'];
+  var cRows = Object.keys(coachStats).map(function(n){
+    var s = coachStats[n];
+    return [n, Object.keys(s.groups).length, s.reports, s.savings];
+  }).sort(function(a,b){ return b[3]-a[3]; });
+  var wsC = XLSX.utils.aoa_to_sheet([cHeaders].concat(cRows));
+  wsC['!cols'] = [{wch:22},{wch:10},{wch:10},{wch:16}];
+  XLSX.utils.book_append_sheet(wb, wsC, 'Coach Performance');
+
+  XLSX.writeFile(wb, '100Weeks_'+cty.replace(/ /g,'_')+'_Analytics_'+ts+'.xlsx');
+  showToast('✅ Analytics Excel downloaded!');
+}
+
+// ── Admin password change modal ──────────────────────────────────────────
+function openAdminPwChangeModal() {
+  var existing = document.getElementById('admin-pw-modal');
+  if (existing) { existing.style.display='flex'; return; }
+  var modal = document.createElement('div');
+  modal.id = 'admin-pw-modal';
+  modal.style.cssText = 'display:flex;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:900;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px);';
+  modal.innerHTML = '<div style="background:#fff;border-radius:20px;padding:0;width:100%;max-width:340px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.3);">'+
+    '<div style="background:var(--navy);padding:16px 18px;display:flex;align-items:center;justify-content:space-between;">'+
+    '<div><div style="font-size:14px;font-weight:800;color:#fff;">🔐 Change Admin Password</div>'+
+    '<div style="font-size:10px;color:rgba(255,255,255,.5);margin-top:2px;">Minimum 8 characters</div></div>'+
+    '<button onclick="document.getElementById(\'admin-pw-modal\').style.display=\'none\'" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">✕</button>'+
+    '</div>'+
+    '<div style="padding:18px;">'+
+    '<label class="fl">CURRENT PASSWORD</label>'+
+    '<input class="inp" id="apw-old" type="password" placeholder="Current password" style="margin-bottom:14px;"/>'+
+    '<label class="fl">NEW PASSWORD</label>'+
+    '<input class="inp" id="apw-new" type="password" placeholder="New password (min 8 chars)" style="margin-bottom:4px;"/>'+
+    '<label class="fl" style="margin-top:10px;">CONFIRM NEW PASSWORD</label>'+
+    '<input class="inp" id="apw-new2" type="password" placeholder="Repeat new password" style="margin-bottom:4px;"/>'+
+    '<div id="apw-err" class="em" style="display:none;margin-bottom:10px;"></div>'+
+    '<div style="margin-bottom:16px;"></div>'+
+    '<button class="btn btn-navy" onclick="doAdminPwChange()" id="apw-btn">Change Password</button>'+
+    '<div style="margin-top:10px;"></div>'+
+    '<button onclick="document.getElementById(\'admin-pw-modal\').style.display=\'none\'" class="btn btn-outline">Cancel</button>'+
+    '</div></div>';
+  document.getElementById('shell').appendChild(modal);
+}
+
+function doAdminPwChange() {
+  var oldPw  = document.getElementById('apw-old').value;
+  var newPw  = document.getElementById('apw-new').value;
+  var newPw2 = document.getElementById('apw-new2').value;
+  var errEl  = document.getElementById('apw-err');
+  var btn    = document.getElementById('apw-btn');
+  errEl.style.display='none';
+  if (!oldPw || !newPw || !newPw2) { errEl.textContent='⚠ All fields required'; errEl.style.display='block'; return; }
+  if (newPw.length < 8) { errEl.textContent='⚠ New password must be at least 8 characters'; errEl.style.display='block'; return; }
+  if (newPw !== newPw2) { errEl.textContent='⚠ Passwords do not match'; errEl.style.display='block'; return; }
+  btn.textContent='Saving…'; btn.disabled=true;
+  window.__changeAdminPassword(oldPw, newPw).then(function(res){
+    btn.textContent='Change Password'; btn.disabled=false;
+    if (res.ok) {
+      document.getElementById('admin-pw-modal').style.display='none';
+      showToast('✅ Admin password updated!');
+    } else {
+      errEl.textContent='⚠ ' + res.msg;
+      errEl.style.display='block';
+    }
+  });
 }
 
 (function(){
@@ -2539,10 +3484,16 @@ function saveEdit() {
       return updated;
     });
     sc(coaches);
-    // Sync to Firebase if available
+    // Sync to Firebase — true upsert (overwrites existing doc if firestoreId known)
     var updated = coaches.find(function(c){ return c.id===id; });
-    if(navigator.onLine && window.__fbPushCoach && updated) {
-      // Update is a new push — note this adds a duplicate; for a full update we'd need deleteDoc+addDoc
+    if(navigator.onLine && window.__fbUpdateCoach && updated) {
+      window.__fbUpdateCoach(updated).then(function(res){
+        if(res.ok && !updated.firestoreId) {
+          // Store the Firestore doc ID so future edits overwrite correctly
+          var fresh = lc().map(function(c){ return c.id===id ? Object.assign({},c,{firestoreId:res.id}) : c; });
+          sc(fresh);
+        }
+      }).catch(console.error);
       showToast('✅ Coach updated!');
     } else {
       showToast('✅ Coach updated locally!');
@@ -2563,6 +3514,16 @@ function saveEdit() {
       return updated;
     });
     scAdmins(admins);
+    // Sync to Firebase — true upsert
+    var updatedAdmin = admins.find(function(a){ return a.id===id; });
+    if(navigator.onLine && window.__fbUpdateAdmin && updatedAdmin) {
+      window.__fbUpdateAdmin(updatedAdmin).then(function(res){
+        if(res.ok && !updatedAdmin.firestoreId) {
+          var fresh = lcAdmins().map(function(a){ return a.id===id ? Object.assign({},a,{firestoreId:res.id}) : a; });
+          scAdmins(fresh);
+        }
+      }).catch(console.error);
+    }
     showToast('✅ Admin updated!');
     closeEditModal();
     btn.textContent='Save Changes'; btn.disabled=false;
